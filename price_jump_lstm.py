@@ -1,4 +1,4 @@
-# price_jump_lstm.py
+//price_jump_lstm.py
 """
 Train an LSTM model to predict 0.35% price jumps within 5 minutes
 based on the previous 20-minute minute-candle history.
