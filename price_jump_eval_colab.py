@@ -43,6 +43,8 @@ class LSTMCls(nn.Module):
 
 print("Читаем", EVAL_JSON)
 df = load_df(EVAL_JSON)
+print(f"Загружено {len(df)} свечей")
+
 print("Загружаем модель", MODEL_PATH)
 ckpt = torch.load(MODEL_PATH, map_location=DEVICE, weights_only=False)
 model = LSTMCls(); model.load_state_dict(ckpt["model_state"]); model.to(DEVICE).eval()
@@ -50,11 +52,25 @@ scaler: StandardScaler = ckpt["scaler"]
 
 loader = DataLoader(EvalDS(df, scaler), batch_size=512)
 preds = np.zeros(len(loader.dataset), dtype=np.int8)
+probs = np.zeros(len(loader.dataset), dtype=np.float32)
+
+print("Делаем предсказания...")
 with torch.no_grad():
     ptr = 0
     for xb in loader:
-        p = model(xb.to(DEVICE)).argmax(1).cpu().numpy().astype(np.int8)
-        preds[ptr:ptr+len(p)] = p; ptr += len(p)
+        outputs = model(xb.to(DEVICE))
+        probs_batch = torch.softmax(outputs, dim=1).cpu().numpy()
+        p = outputs.argmax(1).cpu().numpy().astype(np.int8)
+        preds[ptr:ptr+len(p)] = p
+        probs[ptr:ptr+len(p)] = probs_batch[:, 1]  # вероятность класса 1
+        ptr += len(p)
+
+print(f"Сделано {len(preds)} предсказаний")
+print(f"Предсказаний 0: {np.sum(preds == 0)}")
+print(f"Предсказаний 1: {np.sum(preds == 1)}")
+print(f"Процент предсказаний 1: {np.mean(preds == 1)*100:.2f}%")
+print(f"Средняя уверенность модели: {np.mean(probs):.3f}")
+print(f"Мин/макс уверенность: {np.min(probs):.3f} / {np.max(probs):.3f}")
 
 print("Сохраняем", OUT_DATA)
 np.savez_compressed(
@@ -65,5 +81,6 @@ np.savez_compressed(
     l=df["l"].values.astype(np.float32),
     c=df["c"].values.astype(np.float32),
     preds=preds,
+    probs=probs,
 )
 print("✓ Данные сохранены:", OUT_DATA)
