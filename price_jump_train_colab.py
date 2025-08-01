@@ -1,6 +1,6 @@
 # price_jump_train_colab.py
 """Обучает LSTM, метка = 1 если
-   • максимум High за следующие 5 мин ≥ 0.35 %
+   • максимум Close за следующие 5 мин ≥ Open + 0.35%
 Сохраняет модель и StandardScaler в lstm_jump.pt 
 """
 from pathlib import Path
@@ -8,7 +8,7 @@ import json, numpy as np, pandas as pd, torch, torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset, DataLoader, random_split
 
-SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 20, 5, 0.0035   # 20-мин история, окно 5 мин
+SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 20, 5, 0.0035   # 20-мин история, окно 5 мин, 0.35%
 
 def load_dataframe(path: Path) -> pd.DataFrame:
     with open(path) as f: raw = json.load(f)
@@ -19,15 +19,18 @@ def load_dataframe(path: Path) -> pd.DataFrame:
 class CandleDataset(Dataset):
     def __init__(self, df: pd.DataFrame):
         self.closes = df["c"].astype(np.float32).values
-        self.highs  = df["h"].astype(np.float32).values
+        self.opens = df["o"].astype(np.float32).values
         feats = df[["o","h","l","c"]].astype(np.float32).values
         self.scaler = StandardScaler().fit(feats)
         feats = self.scaler.transform(feats)
 
         self.samples=[]
         for i in range(SEQ_LEN, len(df)-PRED_WINDOW):
-            start = self.closes[i]
-            jump  = (self.highs[i+1:i+PRED_WINDOW+1].max()/start - 1) >= JUMP_THRESHOLD
+            current_open = self.opens[i]
+            # Максимум Close за следующие 5 минут
+            max_close = self.closes[i+1:i+PRED_WINDOW+1].max()
+            # Проверяем, превышает ли максимум open на 0.35%
+            jump = (max_close / current_open - 1) >= JUMP_THRESHOLD
             label = 1 if jump else 0
             self.samples.append((feats[i-SEQ_LEN:i], label))
 
@@ -50,7 +53,13 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 print("Загружаем", TRAIN_JSON)
 df = load_dataframe(TRAIN_JSON)
+print(f"Загружено {len(df)} свечей")
+
 ds = CandleDataset(df)
+print(f"Создано {len(ds)} сэмплов")
+print(f"Меток 1: {sum(1 for _, y in ds.samples if y == 1)}")
+print(f"Меток 0: {sum(1 for _, y in ds.samples if y == 0)}")
+
 val = int(len(ds)*VAL_SPLIT)
 train_ds,val_ds = random_split(ds,[len(ds)-val,val])
 tl = DataLoader(train_ds,BATCH_SIZE,shuffle=True)
