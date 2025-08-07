@@ -35,7 +35,8 @@ kw = dict(type="candle", style="charles", volume=False,
           show_nontrading=True, datetime_format="%m-%d %H:%M", xrotation=15)
 if not jumps.empty:
     vdates = list(jumps.index.tz_localize(None))
-    kw["vlines"] = vdates
+    # Рисуем короткие вертикальные отрезки в нижней части графика (0-10% высоты)
+    kw["vlines"] = dict(vlines=vdates, ymin=0.0, ymax=0.10, colors="red", linewidths=1.2, alpha=0.8)
 
 print("Рисуем график…")
 mpf.plot(dfp, **kw)
