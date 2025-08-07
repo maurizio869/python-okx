@@ -20,6 +20,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # ──────────────────────────────────────────────────────────────────
 
 SEQ_LEN, PRED_WIN = 20, 5
+THRESHOLD = 0.45  # порог вероятности для присвоения класса 1
 
 def load_df(path: Path) -> pd.DataFrame:
     with open(path) as f:
@@ -61,7 +62,7 @@ with torch.no_grad():
     for xb in loader:
         outputs = model(xb.to(DEVICE))
         probs_batch = torch.softmax(outputs, dim=1).cpu().numpy()
-        p = outputs.argmax(1).cpu().numpy().astype(np.int8)
+        p = (probs_batch[:, 1] > THRESHOLD).astype(np.int8)
         preds[ptr:ptr+len(p)] = p
         probs[ptr:ptr+len(p)] = probs_batch[:, 1]  # вероятность класса 1
         ptr += len(p)

@@ -42,14 +42,20 @@ class CandleDataset(Dataset):
         return torch.tensor(x), torch.tensor(y)
 
 class LSTMClassifier(nn.Module):
-    def __init__(self,nfeat=4,hidden=64,layers=2):
-        super().__init__(); self.lstm=nn.LSTM(nfeat,hidden,layers,batch_first=True); self.fc=nn.Linear(hidden,2)
-    def forward(self,x): _,(h,_) = self.lstm(x); return self.fc(h[-1])
+    def __init__(self, nfeat: int = 4, hidden: int = 64, layers: int = 2, dropout: float = 0.3):
+        super().__init__()
+        # dropout активен только если layers > 1
+        self.lstm = nn.LSTM(nfeat, hidden, layers, batch_first=True,
+                            dropout=dropout if layers > 1 else 0.0)
+        self.fc = nn.Linear(hidden, 2)
+    def forward(self, x):
+        _, (h, _) = self.lstm(x)
+        return self.fc(h[-1])
 
 # ─── параметры обучения ───────────────────────────────────────────
 TRAIN_JSON = Path("candles_10d.json")
 MODEL_PATH = Path("lstm_jump.pt")
-VAL_SPLIT, EPOCHS = 0.2, 10
+VAL_SPLIT, EPOCHS = 0.2, 30
 BATCH_SIZE, LR = 512, 1e-3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -60,8 +66,14 @@ print(f"Загружено {len(df)} свечей")
 
 ds = CandleDataset(df)
 print(f"Создано {len(ds)} сэмплов")
-print(f"Меток 1: {sum(1 for _, y in ds.samples if y == 1)}")
-print(f"Меток 0: {sum(1 for _, y in ds.samples if y == 0)}")
+pos_cnt = sum(1 for _, y in ds.samples if y == 1)
+neg_cnt = len(ds) - pos_cnt
+print(f"Меток 1: {pos_cnt}")
+print(f"Меток 0: {neg_cnt}")
+
+# Взвешивание классов для компенсации дисбаланса
+pos_weight = neg_cnt / max(pos_cnt, 1)
+class_weights = torch.tensor([1.0, pos_weight], device=DEVICE)
 
 val = int(len(ds)*VAL_SPLIT)
 train_ds,val_ds = random_split(ds,[len(ds)-val,val])
@@ -70,7 +82,7 @@ vl = DataLoader(val_ds,BATCH_SIZE)
 
 model = LSTMClassifier().to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
-lossf = nn.CrossEntropyLoss()
+lossf = nn.CrossEntropyLoss(weight=class_weights)
 
 for e in range(1, EPOCHS+1):
     model.train(); tot=0
