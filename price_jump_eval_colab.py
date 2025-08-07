@@ -19,7 +19,7 @@ OUT_DATA = Path("viz_data.npz")       # куда сохранить данные
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # ──────────────────────────────────────────────────────────────────
 
-SEQ_LEN, PRED_WIN = 20, 5
+SEQ_LEN, PRED_WINDOW = 20, 5
 THRESHOLD = 0.45  # порог вероятности для присвоения класса 1
 
 def load_df(path: Path) -> pd.DataFrame:
@@ -34,12 +34,11 @@ class EvalDS(Dataset):
         raw_feats = df[["o", "h", "l", "c"]].astype(np.float32).values
 
         windows = []
-        for i in range(SEQ_LEN, len(df) - PRED_WIN):
+        for i in range(SEQ_LEN, len(df) - PRED_WINDOW):
             window_raw = raw_feats[i - SEQ_LEN + 1 : i + 1].copy()
             ref_open   = window_raw[0, 0]
             window_rel = window_raw / ref_open - 1.0
-            window_scaled = scaler.transform(window_rel)
-            windows.append(window_scaled)
+            windows.append(scaler.transform(window_rel))
 
         self.samples = windows
     def __len__(self): return len(self.samples)

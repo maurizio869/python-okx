@@ -8,7 +8,7 @@ import json, numpy as np, pandas as pd, torch, torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset, DataLoader, random_split
 
-SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 20, 5, 0.0035   # 20-мин история, окно 5 мин, 0.35%
+SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 20, 5, 0.0035  # 20-мин история, окно 5 мин
 
 def load_dataframe(path: Path) -> pd.DataFrame:
     with open(path) as f: raw = json.load(f)
