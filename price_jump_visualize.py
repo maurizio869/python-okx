@@ -45,9 +45,19 @@ fig, axlist = mpf.plot(dfp, **kw, returnfig=True)
 # Добавляем короткие вертикальные линии (0–10 % высоты оси цены)
 if vdates:
     price_ax = axlist[0]  # основная ось с ценой
+    y_min, y_max = price_ax.get_ylim()
+    margin = (y_max - y_min) * 0.02  # отступ 2 % от цены
+
+    # Индекс без таймзоны для удобного поиска цен
+    df_no_tz = dfp.copy()
+    df_no_tz.index = df_no_tz.index.tz_localize(None)
+
     for vd in vdates:
-        price_ax.axvline(vd, color="blue", ymin=0.0, ymax=0.05,
-                         linewidth=1.2, alpha=0.8)
+        # Цена минимума текущей свечи
+        low_price = df_no_tz.loc[vd, "Low"]
+        top_y = max(y_min, low_price - margin)
+        price_ax.vlines(vd, y_min, top_y,
+                        colors="blue", linewidth=1.2, alpha=0.8)
 
 import matplotlib.pyplot as plt
 plt.show()
