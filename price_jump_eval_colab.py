@@ -20,7 +20,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # ──────────────────────────────────────────────────────────────────
 
 SEQ_LEN, PRED_WINDOW = 20, 5
-THRESHOLD = 0.45  # порог вероятности для присвоения класса 1
+THRESHOLD = 0.8   # порог вероятности для присвоения класса 1
 
 def load_df(path: Path) -> pd.DataFrame:
     with open(path) as f:
