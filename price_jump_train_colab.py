@@ -19,22 +19,32 @@ def load_dataframe(path: Path) -> pd.DataFrame:
 class CandleDataset(Dataset):
     def __init__(self, df: pd.DataFrame):
         self.closes = df["c"].astype(np.float32).values
-        self.opens = df["o"].astype(np.float32).values
-        feats = df[["o","h","l","c"]].astype(np.float32).values
-        self.scaler = StandardScaler().fit(feats)
-        feats = self.scaler.transform(feats)
+        self.opens  = df["o"].astype(np.float32).values
+        raw_feats   = df[["o", "h", "l", "c"]].astype(np.float32).values
 
-        self.samples=[]
-        # Формируем выборку: последовательность включает текущую свечу (индекс i)
+        # Сохраняем необработанные относительные окна, чтобы потом подогнать StandardScaler
+        raw_windows = []      # список (seq_len, 4)
+        labels      = []
+
         for i in range(SEQ_LEN, len(df) - PRED_WINDOW):
             current_open = self.opens[i]
-            # Максимум Close за следующие 5 минут
-            max_close = self.closes[i + 1 : i + PRED_WINDOW + 1].max()
-            # Проверяем, превышает ли максимум open на 0.35%
-            jump = (max_close / current_open - 1) >= JUMP_THRESHOLD
-            label = 1 if jump else 0
-            # Последовательность длиной SEQ_LEN, включающая текущую свечу
-            self.samples.append((feats[i - SEQ_LEN + 1 : i + 1], label))
+            max_close    = self.closes[i + 1 : i + PRED_WINDOW + 1].max()
+            jump         = (max_close / current_open - 1) >= JUMP_THRESHOLD
+            label        = 1 if jump else 0
+
+            window_raw = raw_feats[i - SEQ_LEN + 1 : i + 1].copy()
+            ref_open   = window_raw[0, 0]                # Open первой свечи
+            window_rel = window_raw / ref_open - 1.0      # относительные изменения
+
+            raw_windows.append(window_rel)
+            labels.append(label)
+
+        # Фитируем scaler на всех относительных значениях
+        all_rows = np.vstack(raw_windows)                 # shape: (n_samples*seq_len, 4)
+        self.scaler = StandardScaler().fit(all_rows)
+
+        # Трансформируем и сохраняем финальные выборки
+        self.samples = [(self.scaler.transform(w), lbl) for w, lbl in zip(raw_windows, labels)]
 
     def __len__(self): return len(self.samples)
     def __getitem__(self, idx):
