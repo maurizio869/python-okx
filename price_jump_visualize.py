@@ -33,12 +33,21 @@ dfp = df.rename(columns={"o": "Open", "h": "High", "l": "Low", "c": "Close"})
 
 kw = dict(type="candle", style="charles", volume=False,
           show_nontrading=True, datetime_format="%m-%d %H:%M", xrotation=15)
-if not jumps.empty:
-    vdates = list(jumps.index.tz_localize(None))
-    # Рисуем короткие вертикальные отрезки в нижней части графика (0-10% высоты)
-    kw["vlines"] = dict(vlines=vdates, ymin=0.0, ymax=0.10, colors="blue", linewidths=1.2, alpha=0.8)
+
+# Сохраняем даты скачков без таймзоны для последующего рисования
+vdates = list(jumps.index.tz_localize(None)) if not jumps.empty else []
 
 print("Рисуем график…")
-mpf.plot(dfp, **kw)
+
+# Рисуем график и получаем фигуру для последующего добавления линий
+fig, axlist = mpf.plot(dfp, **kw, returnfig=True)
+
+# Добавляем короткие вертикальные линии (0–10 % высоты оси цены)
+if vdates:
+    price_ax = axlist[0]  # основная ось с ценой
+    for vd in vdates:
+        price_ax.axvline(vd, color="blue", ymin=0.0, ymax=0.10,
+                         linewidth=1.2, alpha=0.8)
+
 import matplotlib.pyplot as plt
 plt.show()
