@@ -19,7 +19,7 @@ OUT_DATA = Path("viz_data.npz")       # куда сохранить данные
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # ──────────────────────────────────────────────────────────────────
 
-SEQ_LEN, PRED_WIN = 60, 25
+SEQ_LEN, PRED_WIN = 20, 5
 
 def load_df(path: Path) -> pd.DataFrame:
     with open(path) as f:
