@@ -25,14 +25,16 @@ class CandleDataset(Dataset):
         feats = self.scaler.transform(feats)
 
         self.samples=[]
-        for i in range(SEQ_LEN, len(df)-PRED_WINDOW):
+        # Формируем выборку: последовательность включает текущую свечу (индекс i)
+        for i in range(SEQ_LEN, len(df) - PRED_WINDOW):
             current_open = self.opens[i]
             # Максимум Close за следующие 5 минут
-            max_close = self.closes[i+1:i+PRED_WINDOW+1].max()
+            max_close = self.closes[i + 1 : i + PRED_WINDOW + 1].max()
             # Проверяем, превышает ли максимум open на 0.35%
             jump = (max_close / current_open - 1) >= JUMP_THRESHOLD
             label = 1 if jump else 0
-            self.samples.append((feats[i-SEQ_LEN:i], label))
+            # Последовательность длиной SEQ_LEN, включающая текущую свечу
+            self.samples.append((feats[i - SEQ_LEN + 1 : i + 1], label))
 
     def __len__(self): return len(self.samples)
     def __getitem__(self, idx):

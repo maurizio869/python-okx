@@ -32,7 +32,8 @@ class EvalDS(Dataset):
     def __init__(self, df: pd.DataFrame, scaler: StandardScaler):
         feats = df[["o", "h", "l", "c"]].astype(np.float32).values
         self.x = scaler.transform(feats)
-        self.samples = [self.x[i-SEQ_LEN:i] for i in range(SEQ_LEN, len(df)-PRED_WIN)]
+        # Последовательности включают текущую свечу (индекс i)
+        self.samples = [self.x[i - SEQ_LEN + 1 : i + 1] for i in range(SEQ_LEN, len(df) - PRED_WIN)]
     def __len__(self): return len(self.samples)
     def __getitem__(self, idx): return torch.tensor(self.samples[idx])
 
