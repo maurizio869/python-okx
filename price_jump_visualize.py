@@ -46,7 +46,7 @@ fig, axlist = mpf.plot(dfp, **kw, returnfig=True)
 if vdates:
     price_ax = axlist[0]  # основная ось с ценой
     for vd in vdates:
-        price_ax.axvline(vd, color="blue", ymin=0.0, ymax=0.10,
+        price_ax.axvline(vd, color="blue", ymin=0.0, ymax=0.12,
                          linewidth=1.2, alpha=0.8)
 
 import matplotlib.pyplot as plt
