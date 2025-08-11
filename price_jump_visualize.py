@@ -23,15 +23,16 @@ df = pd.DataFrame({
     "h": npz["h"],
     "l": npz["l"],
     "c": npz["c"],
+    "v": npz["v"],
 }, index=idx)
 
 preds = pd.Series(npz["preds"], index=idx[20:20 + len(npz["preds"])] )
 
 # Подготовка для mplfinance
 jumps = preds[preds == 1]
-dfp = df.rename(columns={"o": "Open", "h": "High", "l": "Low", "c": "Close"})
+dfp = df.rename(columns={"o": "Open", "h": "High", "l": "Low", "c": "Close", "v": "Volume"})
 
-kw = dict(type="candle", style="charles", volume=False,
+kw = dict(type="candle", style="charles", volume=True,
           show_nontrading=True, datetime_format="%m-%d %H:%M", xrotation=15)
 
 # Сохраняем даты скачков без таймзоны для последующего рисования

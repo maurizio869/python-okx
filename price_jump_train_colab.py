@@ -20,10 +20,12 @@ class CandleDataset(Dataset):
     def __init__(self, df: pd.DataFrame):
         self.closes = df["c"].astype(np.float32).values
         self.opens  = df["o"].astype(np.float32).values
-        raw_feats   = df[["o", "h", "l", "c"]].astype(np.float32).values
+        # price features and volume as separate arrays
+        price_feats = df[["o", "h", "l", "c"]].astype(np.float32).values
+        volumes     = df["v"].astype(np.float32).values.reshape(-1, 1)
 
         # Сохраняем необработанные относительные окна, чтобы потом подогнать StandardScaler
-        raw_windows = []      # список (seq_len, 4)
+        raw_windows = []      # список (seq_len, 5)
         labels      = []
 
         for i in range(SEQ_LEN, len(df) - PRED_WINDOW):
@@ -32,15 +34,24 @@ class CandleDataset(Dataset):
             jump         = (max_close / current_open - 1) >= JUMP_THRESHOLD
             label        = 1 if jump else 0
 
-            window_raw = raw_feats[i - SEQ_LEN + 1 : i + 1].copy()
-            ref_open   = window_raw[0, 0]                # Open первой свечи
-            window_rel = window_raw / ref_open - 1.0      # относительные изменения
+            # относительные признаки по ценам — к Open первой свечи окна
+            window_raw_prices = price_feats[i - SEQ_LEN + 1 : i + 1].copy()
+            ref_open          = window_raw_prices[0, 0]
+            window_rel_prices = window_raw_prices / ref_open - 1.0
+
+            # относительные признаки по объёму — к объёму первой свечи окна
+            window_raw_vol = volumes[i - SEQ_LEN + 1 : i + 1].copy()   # (seq_len, 1)
+            ref_vol        = max(float(window_raw_vol[0, 0]), 1e-8)
+            window_rel_vol = window_raw_vol / ref_vol - 1.0
+
+            # объединяем 4 ценовых + 1 объёмной канал
+            window_rel = np.concatenate([window_rel_prices, window_rel_vol], axis=1)
 
             raw_windows.append(window_rel)
             labels.append(label)
 
         # Фитируем scaler на всех относительных значениях
-        all_rows = np.vstack(raw_windows)                 # shape: (n_samples*seq_len, 4)
+        all_rows = np.vstack(raw_windows)                 # shape: (n_samples*seq_len, 5)
         self.scaler = StandardScaler().fit(all_rows)
 
         # Трансформируем и сохраняем финальные выборки
@@ -52,7 +63,7 @@ class CandleDataset(Dataset):
         return torch.tensor(x), torch.tensor(y)
 
 class LSTMClassifier(nn.Module):
-    def __init__(self, nfeat: int = 4, hidden: int = 64, layers: int = 2, dropout: float = 0.3):
+    def __init__(self, nfeat: int = 5, hidden: int = 64, layers: int = 2, dropout: float = 0.3):
         super().__init__()
         # dropout активен только если layers > 1
         self.lstm = nn.LSTM(nfeat, hidden, layers, batch_first=True,

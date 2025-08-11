@@ -31,13 +31,20 @@ def load_df(path: Path) -> pd.DataFrame:
 
 class EvalDS(Dataset):
     def __init__(self, df: pd.DataFrame, scaler: StandardScaler):
-        raw_feats = df[["o", "h", "l", "c"]].astype(np.float32).values
+        price_feats = df[["o", "h", "l", "c"]].astype(np.float32).values
+        volumes     = df["v"].astype(np.float32).values.reshape(-1, 1)
 
         windows = []
         for i in range(SEQ_LEN, len(df) - PRED_WINDOW):
-            window_raw = raw_feats[i - SEQ_LEN + 1 : i + 1].copy()
-            ref_open   = window_raw[0, 0]
-            window_rel = window_raw / ref_open - 1.0
+            window_raw_prices = price_feats[i - SEQ_LEN + 1 : i + 1].copy()
+            ref_open          = window_raw_prices[0, 0]
+            window_rel_prices = window_raw_prices / ref_open - 1.0
+
+            window_raw_vol = volumes[i - SEQ_LEN + 1 : i + 1].copy()
+            ref_vol        = max(float(window_raw_vol[0, 0]), 1e-8)
+            window_rel_vol = window_raw_vol / ref_vol - 1.0
+
+            window_rel = np.concatenate([window_rel_prices, window_rel_vol], axis=1)
             windows.append(scaler.transform(window_rel))
 
         self.samples = windows
@@ -45,7 +52,7 @@ class EvalDS(Dataset):
     def __getitem__(self, idx): return torch.tensor(self.samples[idx])
 
 class LSTMCls(nn.Module):
-    def __init__(self, nfeat: int = 4, hidden: int = 64, layers: int = 2):
+    def __init__(self, nfeat: int = 5, hidden: int = 64, layers: int = 2):
         super().__init__(); self.lstm = nn.LSTM(nfeat, hidden, layers, batch_first=True); self.fc = nn.Linear(hidden, 2)
     def forward(self, x): _, (h, _) = self.lstm(x); return self.fc(h[-1])
 
@@ -88,6 +95,7 @@ np.savez_compressed(
     h=df["h"].values.astype(np.float32),
     l=df["l"].values.astype(np.float32),
     c=df["c"].values.astype(np.float32),
+    v=df["v"].values.astype(np.float32),
     preds=preds,
     probs=probs,
 )
