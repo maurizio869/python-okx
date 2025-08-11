@@ -6,6 +6,7 @@
 from pathlib import Path
 import json, numpy as np, pandas as pd, torch, torch.nn as nn
 from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
 
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 20, 5, 0.0035  # 20-мин история, окно 5 мин
@@ -111,12 +112,34 @@ for e in range(1, EPOCHS+1):
         x,y = x.to(DEVICE), y.to(DEVICE)
         opt.zero_grad(); loss=lossf(model(x),y); loss.backward(); opt.step()
         tot += loss.item()*x.size(0)
+    
+    # validation: collect preds, probs for metrics
     model.eval(); corr=tot_s=0
+    val_targets = []
+    val_probs   = []
+    val_preds   = []
     with torch.no_grad():
         for x,y in vl:
-            p=model(x.to(DEVICE)).argmax(1).cpu()
-            corr+=(p==y).sum().item(); tot_s+=y.size(0)
-    print(f'Epoch {e}/{EPOCHS} loss {tot/len(train_ds):.4f} val_acc {corr/tot_s:.3f}')
+            logits = model(x.to(DEVICE))
+            prob1  = torch.softmax(logits, dim=1)[:,1].cpu()
+            pred   = (prob1 >= 0.5).to(torch.long)
+            y_cpu  = y.to(torch.long)
+            
+            corr  += (pred.cpu() == y_cpu).sum().item(); tot_s += y_cpu.size(0)
+            val_targets.extend(y_cpu.tolist())
+            val_probs.extend(prob1.tolist())
+            val_preds.extend(pred.cpu().tolist())
+    
+    # compute metrics
+    try:
+        roc_auc = roc_auc_score(val_targets, val_probs)
+    except Exception:
+        roc_auc = float('nan')
+    f1 = f1_score(val_targets, val_preds, zero_division=0)
+    pr_auc = average_precision_score(val_targets, val_probs)
+    
+    print(f'Epoch {e}/{EPOCHS} loss {tot/len(train_ds):.4f} '
+          f'val_acc {corr/tot_s:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f}')
 
 MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
 torch.save({"model_state":model.state_dict(),"scaler":ds.scaler}, MODEL_PATH)
