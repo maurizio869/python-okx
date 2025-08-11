@@ -108,6 +108,7 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
 lossf = nn.CrossEntropyLoss(weight=class_weights)
 
 best_pr_auc = -1.0
+epochs_no_improve = 0
 for e in range(1, EPOCHS+1):
     model.train(); tot=0
     for x,y in tl:
@@ -146,9 +147,15 @@ for e in range(1, EPOCHS+1):
 
     if pr_auc > best_pr_auc + 1e-6:
         best_pr_auc = pr_auc
+        epochs_no_improve = 0
         MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"model_state": model.state_dict(), "scaler": ds.scaler}, MODEL_PATH)
         print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
+    else:
+        epochs_no_improve += 1
+        if epochs_no_improve >= 25:
+            print(f"⏹ Ранний стоп: PR AUC не улучшается {epochs_no_improve} эпох подряд")
+            break
     
     scheduler.step(pr_auc)
 
