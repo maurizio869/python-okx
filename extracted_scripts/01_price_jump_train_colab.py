@@ -75,7 +75,7 @@ class LSTMClassifier(nn.Module):
 # ─── параметры обучения ───────────────────────────────────────────
 TRAIN_JSON = Path("candles_10d.json")
 MODEL_PATH = Path("lstm_jump.pt")
-VAL_SPLIT, EPOCHS = 0.2, 70
+VAL_SPLIT, EPOCHS = 0.2, 100
 BATCH_SIZE, LR = 512, 1e-3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -103,7 +103,7 @@ vl = DataLoader(val_ds,BATCH_SIZE)
 model = LSTMClassifier().to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    opt, mode='max', patience=12, factor=0.5, min_lr=1e-6, verbose=True
+    opt, mode='max', patience=10, factor=0.5, min_lr=1e-6, verbose=True
 )
 lossf = nn.CrossEntropyLoss(weight=class_weights)
 
