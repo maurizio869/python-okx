@@ -77,7 +77,7 @@ class LSTMClassifier(nn.Module):
 # ─── параметры обучения ───────────────────────────────────────────
 TRAIN_JSON = Path("candles_10d.json")
 MODEL_PATH = Path("lstm_jump.pt")
-VAL_SPLIT, EPOCHS = 0.2, 30
+VAL_SPLIT, EPOCHS = 0.2, 70
 BATCH_SIZE, LR = 512, 1e-3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -104,6 +104,9 @@ vl = DataLoader(val_ds,BATCH_SIZE)
 
 model = LSTMClassifier().to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    opt, mode='max', patience=12, factor=0.5, min_lr=1e-6, verbose=True
+)
 lossf = nn.CrossEntropyLoss(weight=class_weights)
 
 for e in range(1, EPOCHS+1):
@@ -138,8 +141,11 @@ for e in range(1, EPOCHS+1):
     f1 = f1_score(val_targets, val_preds, zero_division=0)
     pr_auc = average_precision_score(val_targets, val_probs)
     
-    print(f'Epoch {e}/{EPOCHS} loss {tot/len(train_ds):.4f} '
+    curr_lr = opt.param_groups[0]['lr']
+    print(f'Epoch {e}/{EPOCHS} lr {curr_lr:.2e} loss {tot/len(train_ds):.4f} '
           f'val_acc {corr/tot_s:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f}')
+    
+    scheduler.step(pr_auc)
 
 MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
 torch.save({"model_state":model.state_dict(),"scaler":ds.scaler}, MODEL_PATH)
