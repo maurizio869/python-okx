@@ -174,8 +174,76 @@ for e in range(1, EPOCHS+1):
     scheduler.step(pr_auc)
 
 print(f"Лучшая модель с PR_AUC={best_pr_auc:.3f} сохранена в {MODEL_PATH.resolve()}")
+
+# ─── Подбор порога по PnL на валидации ─────────────────────────────
+print("Подбираем порог по PnL на валидационном наборе…")
+# загрузим лучшую модель с диска на всякий случай
+_ckpt = torch.load(MODEL_PATH, map_location=DEVICE, weights_only=False)
+model.load_state_dict(_ckpt["model_state"])  # перезагружаем лучшие веса
+model.to(DEVICE).eval()
+
+# собираем вероятности на валидации
+val_probs_all = np.zeros(len(val_ds), dtype=np.float32)
+with torch.no_grad():
+    ptr = 0
+    for xb, _yb in DataLoader(val_ds, batch_size=BATCH_SIZE):
+        logits = model(xb.to(DEVICE))
+        prob1  = torch.softmax(logits, dim=1)[:,1].cpu().numpy()
+        val_probs_all[ptr:ptr+len(prob1)] = prob1
+        ptr += len(prob1)
+
+# считаем доходности сделок для индексов валидации
+val_indices = np.asarray(val_ds.indices, dtype=np.int64)
+entry_idx = val_indices + SEQ_LEN
+entry_opens = ds.opens[entry_idx]
+exit_closes = ds.closes[entry_idx + PRED_WINDOW]
+ret_per_trade_val = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
+
+thr_min, thr_max, thr_step = 0.05, 0.95, 0.05
+print(f"Перебор порога по PnL (валидация): min={thr_min:.2f}, max={thr_max:.2f}, step={thr_step:.2f}")
+thresholds = np.arange(thr_min, thr_max + 1e-9, thr_step)
+
+best_comp_ret = -np.inf
+best_threshold_pnl = float(thresholds[0])
+best_trades = 0
+
+def _safe_sharpe(r: np.ndarray) -> float:
+    if r.size < 2:
+        return 0.0
+    std = float(np.std(r))
+    return float(np.mean(r) / (std + 1e-12))
+
+for t in thresholds:
+    mask = (val_probs_all >= t)
+    n_trades = int(mask.sum())
+    if n_trades == 0:
+        comp_ret = -np.inf
+        sharpe = 0.0
+    else:
+        r = ret_per_trade_val[mask]
+        if np.any(r <= -0.999999):
+            comp_ret = -1.0
+        else:
+            comp_ret = float(np.exp(np.sum(np.log1p(r))) - 1.0)
+        sharpe = _safe_sharpe(r)
+    print(f"thr={t:.2f} trades={n_trades} comp_ret={comp_ret*100 if np.isfinite(comp_ret) else float('nan'):.2f}% sharpe={sharpe:.2f}")
+    if comp_ret > best_comp_ret:
+        best_comp_ret = comp_ret
+        best_threshold_pnl = float(t)
+        best_trades = n_trades
+
+print(f"Выбран порог по PnL (валидация): {best_threshold_pnl:.4f}, comp_ret={best_comp_ret*100 if np.isfinite(best_comp_ret) else float('nan'):.2f}% trades={best_trades}")
+
+# дописываем threshold в чекпойнт и meta JSON
+_final_ckpt = {
+    "model_state": model.state_dict(),
+    "scaler": ds.scaler,
+    "meta": {"seq_len": SEQ_LEN, "pred_window": PRED_WINDOW, "threshold": best_threshold_pnl},
+}
+torch.save(_final_ckpt, MODEL_PATH)
+
 try:
     with open(MODEL_META_PATH, "w", encoding="utf-8") as mf:
-        json.dump({"seq_len": int(SEQ_LEN), "pred_window": int(PRED_WINDOW)}, mf)
+        json.dump({"seq_len": int(SEQ_LEN), "pred_window": int(PRED_WINDOW), "threshold": float(best_threshold_pnl)}, mf)
 except Exception as ex:
     print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")
