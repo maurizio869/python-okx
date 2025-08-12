@@ -11,6 +11,7 @@ import torch
 import torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset, DataLoader
+from sklearn.metrics import roc_curve
 
 # ─── ПАРАМЕТРЫ ────────────────────────────────────────────────────
 EVAL_JSON = Path("candles_2d.json")   # файл свечей для теста
@@ -75,12 +76,30 @@ with torch.no_grad():
     for xb in loader:
         outputs = model(xb.to(DEVICE))
         probs_batch = torch.softmax(outputs, dim=1).cpu().numpy()
-        p = (probs_batch[:, 1] > THRESHOLD).astype(np.int8)
-        preds[ptr:ptr+len(p)] = p
-        probs[ptr:ptr+len(p)] = probs_batch[:, 1]  # вероятность класса 1
-        ptr += len(p)
+        probs[ptr:ptr+len(probs_batch)] = probs_batch[:, 1]
+        ptr += len(probs_batch)
+
+# derive ground-truth labels (same logic as train)
+opens  = df["o"].astype(np.float32).values
+closes = df["c"].astype(np.float32).values
+labels = []
+for i in range(SEQ_LEN, len(df) - PRED_WINDOW):
+    current_open = opens[i]
+    max_close    = closes[i + 1 : i + PRED_WINDOW + 1].max()
+    jump         = (max_close / current_open - 1) >= 0.0035
+    labels.append(1 if jump else 0)
+y_true = np.asarray(labels, dtype=np.int8)
+
+# select threshold by maximizing TPR/FPR (LR+)
+fpr, tpr, thr = roc_curve(y_true, probs)
+lr_plus = tpr / np.maximum(fpr, 1e-6)
+best_idx = int(np.argmax(lr_plus))
+best_threshold = float(thr[best_idx])
+
+preds = (probs >= best_threshold).astype(np.int8)
 
 print(f"Сделано {len(preds)} предсказаний")
+print(f"Выбран порог по LR+ (TPR/FPR): {best_threshold:.4f}, LR+={lr_plus[best_idx]:.2f}")
 print(f"Предсказаний 0: {np.sum(preds == 0)}")
 print(f"Предсказаний 1: {np.sum(preds == 1)}")
 print(f"Процент предсказаний 1: {np.mean(preds == 1)*100:.2f}%")
@@ -98,5 +117,8 @@ np.savez_compressed(
     v=df["v"].values.astype(np.float32),
     preds=preds,
     probs=probs,
+    seq_len=np.int32(SEQ_LEN),
+    pred_window=np.int32(PRED_WINDOW),
+    threshold=np.float32(best_threshold),
 )
 print("✓ Данные сохранены:", OUT_DATA)

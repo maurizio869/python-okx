@@ -19,6 +19,7 @@ npz = np.load(DATA_FILE)
 idx = pd.to_datetime(npz["index"], utc=True)
 
 seq_len = int(npz.get("seq_len", 60)) if hasattr(npz, "get") else int(npz["seq_len"]) if "seq_len" in npz.files else 60
+threshold = float(npz["threshold"]) if "threshold" in npz.files else None
 
 df = pd.DataFrame({
     "o": npz["o"],
@@ -41,6 +42,8 @@ kw = dict(type="candle", style="charles", volume=True,
 vdates = list(jumps.index.tz_localize(None)) if not jumps.empty else []
 
 print("Рисуем график…")
+if threshold is not None:
+    print(f"Порог классификации (LR+): {threshold:.4f}")
 
 # Рисуем график и получаем фигуру для последующего добавления линий
 fig, axlist = mpf.plot(dfp, **kw, returnfig=True)
