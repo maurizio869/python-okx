@@ -21,7 +21,6 @@ class CandleDataset(Dataset):
     def __init__(self, df: pd.DataFrame):
         self.closes = df["c"].astype(np.float32).values
         self.opens  = df["o"].astype(np.float32).values
-        # price features and volume as separate arrays
         price_feats = df[["o", "h", "l", "c"]].astype(np.float32).values
         volumes     = df["v"].astype(np.float32).values.reshape(-1, 1)
 
@@ -41,11 +40,10 @@ class CandleDataset(Dataset):
             window_rel_prices = window_raw_prices / ref_open - 1.0
 
             # относительные признаки по объёму — к объёму первой свечи окна
-            window_raw_vol = volumes[i - SEQ_LEN + 1 : i + 1].copy()   # (seq_len, 1)
+            window_raw_vol = volumes[i - SEQ_LEN + 1 : i + 1].copy()
             ref_vol        = max(float(window_raw_vol[0, 0]), 1e-8)
             window_rel_vol = window_raw_vol / ref_vol - 1.0
 
-            # объединяем 4 ценовых + 1 объёмной канал
             window_rel = np.concatenate([window_rel_prices, window_rel_vol], axis=1)
 
             raw_windows.append(window_rel)
@@ -146,7 +144,6 @@ for e in range(1, EPOCHS+1):
     print(f'Epoch {e}/{EPOCHS} lr {curr_lr:.2e} loss {tot/len(train_ds):.4f} '
           f'val_acc {corr/tot_s:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f}')
 
-    # save best model by PR AUC
     if pr_auc > best_pr_auc + 1e-6:
         best_pr_auc = pr_auc
         MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
