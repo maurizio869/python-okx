@@ -15,11 +15,13 @@ from torch.utils.data import Dataset, DataLoader
 # ─── ПАРАМЕТРЫ ────────────────────────────────────────────────────
 EVAL_JSON = Path("candles_2d.json")   # файл свечей для теста
 MODEL_PATH = Path("lstm_jump.pt")     # обученная модель
+MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 OUT_DATA = Path("viz_data.npz")       # куда сохранить данные
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # ──────────────────────────────────────────────────────────────────
 
-SEQ_LEN, PRED_WINDOW = 20, 5
+# defaults (will be overwritten by meta if present)
+SEQ_LEN, PRED_WINDOW = 60, 5
 THRESHOLD = 0.8   # порог вероятности для присвоения класса 1
 
 def load_df(path: Path) -> pd.DataFrame:
@@ -62,7 +64,19 @@ print(f"Загружено {len(df)} свечей")
 
 print("Загружаем модель", MODEL_PATH)
 ckpt = torch.load(MODEL_PATH, map_location=DEVICE, weights_only=False)
-model = LSTMCls(); model.load_state_dict(ckpt["model_state"]); model.to(DEVICE).eval()
+# try load meta from checkpoint, otherwise side JSON
+meta = ckpt.get("meta", {}) if isinstance(ckpt, dict) else {}
+if not meta and MODEL_META_PATH.exists():
+    try:
+        with open(MODEL_META_PATH, "r", encoding="utf-8") as mf:
+            meta = json.load(mf)
+    except Exception:
+        meta = {}
+if isinstance(meta, dict):
+    SEQ_LEN = int(meta.get("seq_len", SEQ_LEN))
+    PRED_WINDOW = int(meta.get("pred_window", PRED_WINDOW))
+
+model = LSTMCls(nfeat=5); model.load_state_dict(ckpt["model_state"]); model.to(DEVICE).eval()
 scaler: StandardScaler = ckpt["scaler"]
 
 loader = DataLoader(EvalDS(df, scaler), batch_size=512)
@@ -98,5 +112,7 @@ np.savez_compressed(
     v=df["v"].values.astype(np.float32),
     preds=preds,
     probs=probs,
+    seq_len=np.int32(SEQ_LEN),
+    pred_window=np.int32(PRED_WINDOW),
 )
 print("✓ Данные сохранены:", OUT_DATA)

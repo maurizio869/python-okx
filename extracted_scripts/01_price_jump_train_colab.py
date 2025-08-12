@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
 
-SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 20, 5, 0.0035  # 20-мин история, окно 5 мин
+SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 60, 5, 0.0035  # 60-мин история, окно 5 мин
 
 def load_dataframe(path: Path) -> pd.DataFrame:
     with open(path) as f: raw = json.load(f)
@@ -75,6 +75,7 @@ class LSTMClassifier(nn.Module):
 # ─── параметры обучения ───────────────────────────────────────────
 TRAIN_JSON = Path("candles_10d.json")
 MODEL_PATH = Path("lstm_jump.pt")
+MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 VAL_SPLIT, EPOCHS = 0.2, 100
 BATCH_SIZE, LR = 512, 1e-3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -149,7 +150,16 @@ for e in range(1, EPOCHS+1):
         best_pr_auc = pr_auc
         epochs_no_improve = 0
         MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({"model_state": model.state_dict(), "scaler": ds.scaler}, MODEL_PATH)
+        torch.save({
+            "model_state": model.state_dict(),
+            "scaler": ds.scaler,
+            "meta": {"seq_len": SEQ_LEN, "pred_window": PRED_WINDOW}
+        }, MODEL_PATH)
+        try:
+            with open(MODEL_META_PATH, "w", encoding="utf-8") as mf:
+                json.dump({"seq_len": int(SEQ_LEN), "pred_window": int(PRED_WINDOW)}, mf)
+        except Exception as ex:
+            print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")
         print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
     else:
         epochs_no_improve += 1
@@ -160,3 +170,8 @@ for e in range(1, EPOCHS+1):
     scheduler.step(pr_auc)
 
 print(f"Лучшая модель с PR_AUC={best_pr_auc:.3f} сохранена в {MODEL_PATH.resolve()}")
+try:
+    with open(MODEL_META_PATH, "w", encoding="utf-8") as mf:
+        json.dump({"seq_len": int(SEQ_LEN), "pred_window": int(PRED_WINDOW)}, mf)
+except Exception as ex:
+    print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")

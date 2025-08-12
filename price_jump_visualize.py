@@ -18,6 +18,8 @@ npz = np.load(DATA_FILE)
 # Восстанавливаем DataFrame
 idx = pd.to_datetime(npz["index"], utc=True)
 
+seq_len = int(npz.get("seq_len", 60)) if hasattr(npz, "get") else int(npz["seq_len"]) if "seq_len" in npz.files else 60
+
 df = pd.DataFrame({
     "o": npz["o"],
     "h": npz["h"],
@@ -26,7 +28,7 @@ df = pd.DataFrame({
     "v": npz["v"],
 }, index=idx)
 
-preds = pd.Series(npz["preds"], index=idx[20:20 + len(npz["preds"])] )
+preds = pd.Series(npz["preds"], index=idx[seq_len:seq_len + len(npz["preds"])])
 
 # Подготовка для mplfinance
 jumps = preds[preds == 1]
