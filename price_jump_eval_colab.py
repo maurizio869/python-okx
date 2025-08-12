@@ -77,6 +77,9 @@ if isinstance(meta, dict):
     SEQ_LEN = int(meta.get("seq_len", SEQ_LEN))
     PRED_WINDOW = int(meta.get("pred_window", PRED_WINDOW))
 
+# choose threshold: from meta if present, else default THRESHOLD
+best_threshold = float(meta.get("threshold", THRESHOLD)) if isinstance(meta, dict) else THRESHOLD
+
 model = LSTMCls(nfeat=5); model.load_state_dict(ckpt["model_state"]); model.to(DEVICE).eval()
 scaler: StandardScaler = ckpt["scaler"]
 
@@ -93,70 +96,11 @@ with torch.no_grad():
         probs[ptr:ptr+len(probs_batch)] = probs_batch[:, 1]
         ptr += len(probs_batch)
 
-# derive ground-truth labels (same logic as train)
-opens  = df["o"].astype(np.float32).values
-closes = df["c"].astype(np.float32).values
-labels = []
-for i in range(SEQ_LEN, len(df) - PRED_WINDOW):
-    current_open = opens[i]
-    max_close    = closes[i + 1 : i + PRED_WINDOW + 1].max()
-    jump         = (max_close / current_open - 1) >= 0.0035
-    labels.append(1 if jump else 0)
-y_true = np.asarray(labels, dtype=np.int8)
-
-# select threshold by maximizing TPR/FPR (LR+)
-fpr, tpr, thr = roc_curve(y_true, probs)
-lr_plus = tpr / np.maximum(fpr, 1e-6)
-best_idx_lr = int(np.argmax(lr_plus))
-best_threshold_lr = float(thr[best_idx_lr])
-
-# PnL-based threshold sweep (entry at current open, exit at close after PRED_WINDOW)
-entry_opens = opens[SEQ_LEN : len(df) - PRED_WINDOW]
-exit_closes = closes[SEQ_LEN + PRED_WINDOW : len(df)]
-ret_per_trade = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0  # percentage returns
-
-thr_min, thr_max, thr_step = 0.05, 0.95, 0.05
-print(f"Перебор порога по PnL: min={thr_min:.2f}, max={thr_max:.2f}, step={thr_step:.2f}")
-thresholds = np.arange(thr_min, thr_max + 1e-9, thr_step)
-
-best_comp_ret = -np.inf
-best_threshold_pnl = thresholds[0]
-best_trades = 0
-
-def safe_sharpe(r):
-    if r.size < 2:
-        return 0.0
-    std = np.std(r)
-    return float(np.mean(r) / (std + 1e-12))
-
-for t in thresholds:
-    mask = (probs >= t)
-    n_trades = int(mask.sum())
-    if n_trades == 0:
-        comp_ret = -np.inf
-        sharpe = 0.0
-    else:
-        r = ret_per_trade[mask]
-        # compounded return
-        # guard for any r <= -1.0
-        if np.any(r <= -0.999999):
-            comp_ret = -1.0
-        else:
-            comp_ret = float(np.exp(np.sum(np.log1p(r))) - 1.0)
-        sharpe = safe_sharpe(r)
-    print(f"thr={t:.2f} trades={n_trades} comp_ret={comp_ret*100 if np.isfinite(comp_ret) else float('nan'):.2f}% sharpe={sharpe:.2f}")
-    if comp_ret > best_comp_ret:
-        best_comp_ret = comp_ret
-        best_threshold_pnl = float(t)
-        best_trades = n_trades
-
-best_threshold = best_threshold_pnl
-
+# binarize by chosen threshold
 preds = (probs >= best_threshold).astype(np.int8)
 
 print(f"Сделано {len(preds)} предсказаний")
-print(f"Выбран порог по PnL: {best_threshold:.4f}, comp_ret={best_comp_ret*100 if np.isfinite(best_comp_ret) else float('nan'):.2f}% trades={best_trades}")
-print(f"(Справочно) Порог по LR+ (TPR/FPR): {best_threshold_lr:.4f}, LR+={lr_plus[best_idx_lr]:.2f}")
+print(f"Используем порог: {best_threshold:.4f} ({'из meta' if 'threshold' in (meta or {}) else 'по умолчанию'})")
 print(f"Предсказаний 0: {np.sum(preds == 0)}")
 print(f"Предсказаний 1: {np.sum(preds == 1)}")
 print(f"Процент предсказаний 1: {np.mean(preds == 1)*100:.2f}%")
