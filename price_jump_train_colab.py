@@ -199,9 +199,9 @@ entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
 ret_per_trade_val = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 
-thr_min, thr_max, thr_step = 0.05, 0.95, 0.05
-print(f"Перебор порога по PnL (валидация): min={thr_min:.2f}, max={thr_max:.2f}, step={thr_step:.2f}")
-thresholds = np.arange(thr_min, thr_max + 1e-9, thr_step)
+thr_min, thr_max, thr_step = 0.45, 0.95, 0.025
+print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.3f}")
+thresholds = np.arange(thr_min, thr_max + 1e-12, thr_step)
 
 best_comp_ret = -np.inf
 best_threshold_pnl = float(thresholds[0])
@@ -219,6 +219,7 @@ for t in thresholds:
     if n_trades == 0:
         comp_ret = -np.inf
         sharpe = 0.0
+        sum_ret = 0.0
     else:
         r = ret_per_trade_val[mask]
         if np.any(r <= -0.999999):
@@ -226,7 +227,8 @@ for t in thresholds:
         else:
             comp_ret = float(np.exp(np.sum(np.log1p(r))) - 1.0)
         sharpe = _safe_sharpe(r)
-    print(f"thr={t:.2f} trades={n_trades} comp_ret={comp_ret*100 if np.isfinite(comp_ret) else float('nan'):.2f}% sharpe={sharpe:.2f}")
+        sum_ret = float(np.sum(r))
+    print(f"thr={t:.3f} trades={n_trades} pnl={sum_ret*100:.2f}% comp_ret={comp_ret*100 if np.isfinite(comp_ret) else float('nan'):.2f}% sharpe={sharpe:.2f}")
     if comp_ret > best_comp_ret:
         best_comp_ret = comp_ret
         best_threshold_pnl = float(t)
