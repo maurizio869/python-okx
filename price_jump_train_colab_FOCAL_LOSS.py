@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-13 23:22
+# Last modified (MSK): 2025-08-13 23:23
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -147,7 +147,7 @@ model = LSTMClassifier().to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
 current_patience = 7
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    opt, mode='max', patience=current_patience, factor=0.5, min_lr=1e-6
+    opt, mode='max', patience=current_patience, factor=1/3, min_lr=1e-6
 )
 lossf = FocalLoss(alpha=(ALPHA_NEG, ALPHA_POS), gamma=FOCAL_GAMMA)
 
