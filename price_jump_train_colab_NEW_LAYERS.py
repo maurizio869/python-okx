@@ -1,5 +1,5 @@
 # price_jump_train_colab_NEW_LAYERS.py
-# Last modified (MSK): 2025-08-13 16:31
+# Last modified (MSK): 2025-08-13 17:02
 """Обучение LSTM c расширенными признаками:
 OHLC (rel), V (rel), upper_ratio, lower_ratio, body_sign.
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
@@ -21,7 +21,7 @@ TRAIN_JSON = Path("candles_10d.json")
 MODEL_PATH = Path("lstm_jump.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 VAL_SPLIT, EPOCHS = 0.2, 250
-BATCH_SIZE, LR = 512, 5e-4
+BATCH_SIZE, LR = 512, 2.5e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 

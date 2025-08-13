@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-13 16:31
+# Last modified (MSK): 2025-08-13 17:02
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
 Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -79,7 +79,7 @@ TRAIN_JSON = Path("candles_10d.json")
 MODEL_PATH = Path("lstm_jump.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 VAL_SPLIT, EPOCHS = 0.2, 250
-BATCH_SIZE, LR = 512, 5e-4
+BATCH_SIZE, LR = 512, 2.5e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 print("Загружаем", TRAIN_JSON)
