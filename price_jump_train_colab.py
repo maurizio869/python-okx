@@ -103,7 +103,7 @@ train_ds,val_ds = random_split(ds,[len(ds)-val,val])
 tl = DataLoader(train_ds,BATCH_SIZE,shuffle=True)
 vl = DataLoader(val_ds,BATCH_SIZE)
 
-# Precompute per-trade returns on validation subset for fixed-threshold PnL (@0.55)
+# Precompute per-trade returns on validation subset for fixed-threshold PnL (@0.565)
 val_indices = np.asarray(val_ds.indices, dtype=np.int64)
 entry_idx = val_indices + SEQ_LEN
 entry_opens = ds.opens[entry_idx]
@@ -151,9 +151,9 @@ for e in range(1, EPOCHS+1):
     f1 = f1_score(val_targets, val_preds, zero_division=0)
     pr_auc = average_precision_score(val_targets, val_probs)
     
-    # PnL with fixed threshold 0.55 on validation
+    # PnL with fixed threshold 0.565 on validation
     val_probs_np = np.asarray(val_probs, dtype=np.float32)
-    mask_fixed = val_probs_np >= 0.55
+    mask_fixed = val_probs_np >= 0.565
     trades_fixed = int(mask_fixed.sum())
     pnl_fixed = float(np.sum(ret_per_trade_val_fixed[mask_fixed])) if trades_fixed > 0 else 0.0
     
@@ -164,7 +164,7 @@ for e in range(1, EPOCHS+1):
         curr_lr = opt.param_groups[0]['lr']
     print(f'Epoch {e}/{EPOCHS} lr {curr_lr:.2e} loss {tot/len(train_ds):.4f} '
           f'val_acc {corr/tot_s:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} '
-          f'PNL@0.55 {pnl_fixed*100:.2f}% trades={trades_fixed}')
+          f'PNL@0.565 {pnl_fixed*100:.2f}% trades={trades_fixed}')
 
     # save best model by PR AUC
     if pr_auc > best_pr_auc + 1e-6:
