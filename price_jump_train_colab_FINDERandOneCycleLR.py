@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-13 21:17
+# Last modified (MSK): 2025-08-13 21:41
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -188,7 +188,7 @@ for e in range(1, EPOCHS+1):
         PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
                     "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, PNL_MODEL_PATH)
-        print(f"✓ Сохранена лучшая по PnL модель (PNL@best={best_pnl_sum*100:.2f}% thr={last_best_thr:.4f}) в {PNL_MODEL_PATH.resolve()}")
+        print(f"Лучшая модель с pnl@{last_best_thr:.4f}={best_pnl_sum*100:.2f}% сохранена в {PNL_MODEL_PATH.resolve()}")
     else:
         epochs_no_improve += 1
         if epochs_no_improve >= 40:
