@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-13 22:59
+# Last modified (MSK): 2025-08-13 23:14
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
 Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -115,7 +115,7 @@ ret_per_trade_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 
 model = LSTMClassifier().to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
-current_patience = 4
+current_patience = 6
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     opt, mode='max', patience=current_patience, factor=0.5, min_lr=1e-6
 )
