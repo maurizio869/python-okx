@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-13 17:02
+# Last modified (MSK): 2025-08-13 17:20
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -112,6 +112,7 @@ class FocalLoss(nn.Module):
 # ─── ПАРАМЕТРЫ ОБУЧЕНИЯ ───────────────────────────────────────────────
 TRAIN_JSON = Path("candles_10d.json")
 MODEL_PATH = Path("lstm_jump.pt")
+PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 VAL_SPLIT, EPOCHS = 0.2, 250
 BATCH_SIZE, LR = 512, 2.5e-4
@@ -151,6 +152,7 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
 lossf = FocalLoss(alpha=(ALPHA_NEG, ALPHA_POS), gamma=FOCAL_GAMMA)
 
 best_pr_auc = -1.0
+best_pnl_sum = -float('inf')
 epochs_no_improve = 0
 
 for e in range(1, EPOCHS + 1):
@@ -229,12 +231,18 @@ for e in range(1, EPOCHS + 1):
             "scaler": ds.scaler,
             "meta": {"seq_len": SEQ_LEN, "pred_window": PRED_WINDOW}
         }, MODEL_PATH)
-        try:
-            with open(MODEL_META_PATH, "w", encoding="utf-8") as mf:
-                json.dump({"seq_len": int(SEQ_LEN), "pred_window": int(PRED_WINDOW)}, mf)
-        except Exception as ex:
-            print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")
         print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
+
+    # best-save by PnL@0.565 (sum returns)
+    if pnl_fixed > best_pnl_sum + 1e-12:
+        best_pnl_sum = pnl_fixed
+        PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        torch.save({
+            "model_state": model.state_dict(),
+            "scaler": ds.scaler,
+            "meta": {"seq_len": SEQ_LEN, "pred_window": PRED_WINDOW}
+        }, PNL_MODEL_PATH)
+        print(f"✓ Сохранена лучшая по PnL модель (PNL@0.565={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
     else:
         epochs_no_improve += 1
         if epochs_no_improve >= 40:

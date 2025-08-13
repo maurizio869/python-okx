@@ -1,5 +1,5 @@
 # price_jump_eval_colab.py
-# Last modified (MSK): 2025-08-13 14:53
+# Last modified (MSK): 2025-08-13 17:20
 """Коллаб-ячейка: загрузка чекпойнта, расчёт предсказаний,
 сохранение данных для визуализации (без вывода графика).
 """
@@ -17,6 +17,7 @@ from sklearn.metrics import roc_curve
 # ─── ПАРАМЕТРЫ ────────────────────────────────────────────────────
 EVAL_JSON = Path("candles_2d.json")   # файл свечей для теста
 MODEL_PATH = Path("lstm_jump.pt")     # обученная модель
+PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")  # модель, отобранная по PnL
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 OUT_DATA = Path("viz_data.npz")       # куда сохранить данные
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -126,6 +127,32 @@ print(f"Предсказаний 1: {np.sum(preds == 1)}")
 print(f"Процент предсказаний 1: {np.mean(preds == 1)*100:.2f}%")
 print(f"Средняя уверенность модели: {np.mean(probs):.3f}")
 print(f"Мин/макс уверенность: {np.min(probs):.3f} / {np.max(probs):.3f}")
+
+if PNL_MODEL_PATH.exists():
+    print("\nСравнение с моделью по PnL:")
+    ckpt_pnl = torch.load(PNL_MODEL_PATH, map_location=DEVICE, weights_only=False)
+    model_pnl = LSTMCls(nfeat=5); model_pnl.load_state_dict(ckpt_pnl["model_state"]); model_pnl.to(DEVICE).eval()
+    scaler_pnl: StandardScaler = ckpt_pnl["scaler"]
+    loader_pnl = DataLoader(EvalDS(df, scaler_pnl), batch_size=512)
+    probs_pnl = np.zeros(len(loader_pnl.dataset), dtype=np.float32)
+    with torch.no_grad():
+        ptr = 0
+        for xb in loader_pnl:
+            outputs = model_pnl(xb.to(DEVICE))
+            probs_batch = torch.softmax(outputs, dim=1).cpu().numpy()
+            probs_pnl[ptr:ptr+len(probs_batch)] = probs_batch[:, 1]
+            ptr += len(probs_batch)
+    preds_pnl = (probs_pnl >= best_threshold).astype(np.int8)
+    mask_pnl = probs_pnl >= best_threshold
+    num_trades_pnl = int(mask_pnl.sum())
+    if num_trades_pnl > 0:
+        r = ret_per_trade[mask_pnl]
+        sum_pnl2 = float(np.sum(r))
+        comp_ret2 = -1.0 if np.any(r <= -0.999999) else float(np.exp(np.sum(np.log1p(r))) - 1.0)
+        sharpe2 = float(np.mean(r) / (np.std(r) + 1e-12)) if r.size >= 2 else 0.0
+    else:
+        sum_pnl2, comp_ret2, sharpe2 = 0.0, float('-inf'), 0.0
+    print(f"PnL (lstm_jump_pnl.pt): trades={num_trades_pnl} pnl_sum={sum_pnl2*100:.2f}% comp_ret={comp_ret2*100 if np.isfinite(comp_ret2) else float('nan'):.2f}% sharpe={sharpe2:.2f}")
 
 print("Сохраняем", OUT_DATA)
 np.savez_compressed(

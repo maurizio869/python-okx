@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-13 17:02
+# Last modified (MSK): 2025-08-13 17:20
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
 Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -79,6 +79,7 @@ class LSTMClassifier(nn.Module):
 # ─── параметры обучения ───────────────────────────────────────────
 TRAIN_JSON = Path("candles_10d.json")
 MODEL_PATH = Path("lstm_jump.pt")
+PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 VAL_SPLIT, EPOCHS = 0.2, 250
 BATCH_SIZE, LR = 512, 2.5e-4
@@ -121,6 +122,7 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
 lossf = nn.CrossEntropyLoss(weight=class_weights)
 
 best_pr_auc = -1.0
+best_pnl_sum = -float('inf')
 epochs_no_improve = 0
 for e in range(1, EPOCHS+1):
     model.train(); tot=0
@@ -183,18 +185,15 @@ for e in range(1, EPOCHS+1):
         best_pr_auc = pr_auc
         epochs_no_improve = 0
         MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({
-            "model_state": model.state_dict(),
-            "scaler": ds.scaler,
-            "meta": {"seq_len": SEQ_LEN, "pred_window": PRED_WINDOW}
-        }, MODEL_PATH)
-        # write side meta file as well
-        try:
-            with open(MODEL_META_PATH, "w", encoding="utf-8") as mf:
-                json.dump({"seq_len": int(SEQ_LEN), "pred_window": int(PRED_WINDOW)}, mf)
-        except Exception as ex:
-            print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")
+        torch.save({"model_state": model.state_dict(), "scaler": ds.scaler, "meta": {"seq_len": SEQ_LEN, "pred_window": PRED_WINDOW}}, MODEL_PATH)
         print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
+    
+    # save best-by-PnL model (using PNL@0.565 sum of returns)
+    if pnl_fixed > best_pnl_sum + 1e-12:
+        best_pnl_sum = pnl_fixed
+        PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        torch.save({"model_state": model.state_dict(), "scaler": ds.scaler, "meta": {"seq_len": SEQ_LEN, "pred_window": PRED_WINDOW}}, PNL_MODEL_PATH)
+        print(f"✓ Сохранена лучшая по PnL модель (PNL@0.565={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
     else:
         epochs_no_improve += 1
         if epochs_no_improve >= 40:
