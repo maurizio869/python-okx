@@ -9,6 +9,7 @@ import json, numpy as np, pandas as pd, torch, torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
+import math
 
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035  # 30-мин история, окно 5 мин
 
@@ -111,8 +112,9 @@ ret_per_trade_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 
 model = LSTMClassifier().to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
+current_patience = 10
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    opt, mode='max', patience=10, factor=0.1, min_lr=1e-6
+    opt, mode='max', patience=current_patience, factor=0.2, min_lr=1e-6
 )
 lossf = nn.CrossEntropyLoss(weight=class_weights)
 
@@ -165,6 +167,15 @@ for e in range(1, EPOCHS+1):
           f'val_acc {corr/tot_s:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} '
           f'PNL@0.565 {pnl_fixed*100:.2f}% trades={trades_fixed}')
 
+    # step scheduler and dynamically expand patience on LR reduction
+    old_lr = opt.param_groups[0]['lr']
+    scheduler.step(pr_auc)
+    new_lr = opt.param_groups[0]['lr']
+    if new_lr < old_lr - 1e-12:
+        current_patience = int(math.ceil(current_patience * 1.5))
+        scheduler.patience = current_patience
+        print(f"LR reduced to {new_lr:.2e}. Next patience set to {current_patience} epochs.")
+
     if pr_auc > best_pr_auc + 1e-6:
         best_pr_auc = pr_auc
         epochs_no_improve = 0
@@ -186,7 +197,7 @@ for e in range(1, EPOCHS+1):
             print(f"⏹ Ранний стоп: PR AUC не улучшается {epochs_no_improve} эпох подряд")
             break
     
-    scheduler.step(pr_auc)
+    # scheduler.step already called above
 
 print(f"Лучшая модель с PR_AUC={best_pr_auc:.3f} сохранена в {MODEL_PATH.resolve()}")
 
