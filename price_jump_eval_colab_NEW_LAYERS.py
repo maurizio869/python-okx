@@ -1,5 +1,5 @@
 # price_jump_eval_colab_NEW_LAYERS.py
-# Last modified (MSK): 2025-08-13 16:21
+# Last modified (MSK): 2025-08-13 17:39
 """Инференс модели с расширенными признаками (upper_ratio, lower_ratio, body_sign).
 Читает meta (seq_len, pred_window, threshold), считает признаки из OHLCV и выводит PnL.
 """
@@ -14,6 +14,7 @@ from torch.utils.data import Dataset, DataLoader
 
 EVAL_JSON = Path("candles_2d.json")
 MODEL_PATH = Path("lstm_jump.pt")
+PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 OUT_DATA = Path("viz_data.npz")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -134,6 +135,35 @@ else:
 print(f"Сделано {len(preds)} предсказаний")
 print(f"Используем порог: {best_threshold:.4f} ({'из meta' if 'threshold' in (meta or {}) else 'по умолчанию'})")
 print(f"PnL: trades={num_trades} pnl_sum={sum_pnl*100:.2f}% comp_ret={comp_ret*100 if np.isfinite(comp_ret) else float('nan'):.2f}% sharpe={sharpe:.2f}")
+
+# Compare with PnL-selected checkpoint if exists
+if PNL_MODEL_PATH.exists():
+    print("\nСравнение с моделью по PnL:")
+    ckpt_pnl = torch.load(PNL_MODEL_PATH, map_location=DEVICE, weights_only=False)
+    try:
+        model_pnl = LSTMCls(nfeat=8); model_pnl.load_state_dict(ckpt_pnl["model_state"]); model_pnl.to(DEVICE).eval()
+        scaler_pnl: StandardScaler = ckpt_pnl["scaler"]
+        loader_pnl = DataLoader(EvalDS(df, scaler_pnl), batch_size=512)
+        probs_pnl = np.zeros(len(loader_pnl.dataset), dtype=np.float32)
+        with torch.no_grad():
+            ptr = 0
+            for xb in loader_pnl:
+                outputs = model_pnl(xb.to(DEVICE))
+                probs_batch = torch.softmax(outputs, dim=1).cpu().numpy()
+                probs_pnl[ptr:ptr+len(probs_batch)] = probs_batch[:, 1]
+                ptr += len(probs_batch)
+        mask_pnl = probs_pnl >= best_threshold
+        num_trades_pnl = int(mask_pnl.sum())
+        if num_trades_pnl > 0:
+            r2 = ret_per_trade[mask_pnl]
+            sum_pnl2 = float(np.sum(r2))
+            comp_ret2 = -1.0 if np.any(r2 <= -0.999999) else float(np.exp(np.sum(np.log1p(r2))) - 1.0)
+            sharpe2 = float(np.mean(r2) / (np.std(r2) + 1e-12)) if r2.size >= 2 else 0.0
+        else:
+            sum_pnl2, comp_ret2, sharpe2 = 0.0, float('-inf'), 0.0
+        print(f"PnL (lstm_jump_pnl.pt): trades={num_trades_pnl} pnl_sum={sum_pnl2*100:.2f}% comp_ret={comp_ret2*100 if np.isfinite(comp_ret2) else float('nan'):.2f}% sharpe={sharpe2:.2f}")
+    except Exception as ex:
+        print(f"! Не удалось сравнить с lstm_jump_pnl.pt (возможно другая архитектура): {ex}")
 
 print("Сохраняем", OUT_DATA)
 np.savez_compressed(
