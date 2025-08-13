@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-13 17:20
+# Last modified (MSK): 2025-08-13 17:23
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -20,7 +20,7 @@ MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 VAL_SPLIT, EPOCHS = 0.2, 250
-BATCH_SIZE, BASE_LR = 512, 2.5e-4
+BATCH_SIZE, BASE_LR = 512, 3.80e-04
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class CandleDataset(Dataset):
