@@ -113,7 +113,7 @@ ret_per_trade_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 model = LSTMClassifier().to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    opt, mode='max', patience=10, factor=1/3, min_lr=1e-6
+    opt, mode='max', patience=10, factor=0.1, min_lr=1e-6
 )
 lossf = nn.CrossEntropyLoss(weight=class_weights)
 
