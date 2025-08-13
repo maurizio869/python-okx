@@ -209,7 +209,7 @@ entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
 ret_per_trade_val = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 
-thr_min, thr_max, thr_step = 0.45, 0.95, 0.025
+thr_min, thr_max, thr_step = 0.42, 0.75, 0.005
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.3f}")
 thresholds = np.arange(thr_min, thr_max + 1e-12, thr_step)
 
