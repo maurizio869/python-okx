@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-13 23:23
+# Last modified (MSK): 2025-08-14 00:16
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -115,7 +115,7 @@ MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 VAL_SPLIT, EPOCHS = 0.2, 250
-BATCH_SIZE, LR = 512, 5e-4
+BATCH_SIZE, LR = 512, 1.9e-3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 print("Загружаем", TRAIN_JSON)
@@ -153,6 +153,7 @@ lossf = FocalLoss(alpha=(ALPHA_NEG, ALPHA_POS), gamma=FOCAL_GAMMA)
 
 best_pr_auc = -1.0
 best_pnl_sum = -float('inf')
+best_pnl_thr = 0.565
 epochs_no_improve = 0
 
 for e in range(1, EPOCHS + 1):
@@ -238,13 +239,14 @@ for e in range(1, EPOCHS + 1):
     # best-save by PnL@0.565 (sum returns)
     if pnl_fixed > best_pnl_sum + 1e-12:
         best_pnl_sum = pnl_fixed
+        best_pnl_thr = 0.565
         PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save({
             "model_state": model.state_dict(),
             "scaler": ds.scaler,
             "meta": {"seq_len": SEQ_LEN, "pred_window": PRED_WINDOW}
         }, PNL_MODEL_PATH)
-        print(f"✓ Сохранена лучшая по PnL модель (PNL@0.565={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
+        print(f"✓ Сохранена новая лучшая модель (PNL@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
     else:
         epochs_no_improve += 1
         if epochs_no_improve >= 40:
@@ -252,6 +254,7 @@ for e in range(1, EPOCHS + 1):
             break
 
 print(f"Лучшая модель с PR_AUC={best_pr_auc:.3f} сохранена в {MODEL_PATH.resolve()}")
+print(f"Лучшая модель с pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}% сохранена в {PNL_MODEL_PATH.resolve()}")
 
 # ─── Подбор порога по PnL на валидации ─────────────────────────────
 print("Подбираем порог по PnL на валидационном наборе…")
