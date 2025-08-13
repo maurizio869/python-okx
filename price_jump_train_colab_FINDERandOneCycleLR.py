@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-13 20:38
+# Last modified (MSK): 2025-08-13 20:42
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -109,6 +109,10 @@ sched = torch.optim.lr_scheduler.OneCycleLR(
     pct_start=0.45, div_factor=50.0, final_div_factor=1e3
 )
 
+# PnL@best threshold support
+thr_min,thr_max,thr_step=0.30,0.70,0.0025
+last_best_thr = 0.565
+
 # PnL@0.565 support
 val_indices = np.asarray(val_ds.indices, dtype=np.int64)
 entry_idx = val_indices + SEQ_LEN
@@ -204,7 +208,7 @@ with torch.no_grad():
         val_probs_all[ptr:ptr+len(prob1)] = prob1; ptr += len(prob1)
 entry_opens = ds.opens[entry_idx]; exit_closes = ds.closes[entry_idx+PRED_WINDOW]
 ret_val = exit_closes/np.maximum(entry_opens,1e-12)-1.0
-thr_min,thr_max,thr_step=0.43,0.70,0.0025
+thr_min,thr_max,thr_step=0.30,0.70,0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
 thresholds=np.arange(thr_min,thr_max+1e-12,thr_step)
 best_comp=-np.inf; best_thr=float(thresholds[0]); best_trades=0
