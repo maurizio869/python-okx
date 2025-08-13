@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-13 14:53
+# Last modified (MSK): 2025-08-13 15:37
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
 Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -221,7 +221,7 @@ entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
 ret_per_trade_val = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 
-thr_min, thr_max, thr_step = 0.42, 0.70, 0.0025
+thr_min, thr_max, thr_step = 0.43, 0.70, 0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
 thresholds = np.arange(thr_min, thr_max + 1e-12, thr_step)
 
