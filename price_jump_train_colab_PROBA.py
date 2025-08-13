@@ -111,7 +111,7 @@ class FocalLoss(nn.Module):
 TRAIN_JSON = Path("candles_10d.json")
 MODEL_PATH = Path("lstm_jump.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
-VAL_SPLIT, EPOCHS = 0.2, 170
+VAL_SPLIT, EPOCHS = 0.2, 250
 BATCH_SIZE, LR = 512, 1e-3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -211,7 +211,7 @@ for e in range(1, EPOCHS + 1):
         print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
     else:
         epochs_no_improve += 1
-        if epochs_no_improve >= 25:
+        if epochs_no_improve >= 50:
             print(f"⏹ Ранний стоп: PR AUC не улучшается {epochs_no_improve} эпох подряд")
             break
 
