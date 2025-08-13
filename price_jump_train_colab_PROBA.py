@@ -225,7 +225,7 @@ for e in range(1, EPOCHS + 1):
         print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
     else:
         epochs_no_improve += 1
-        if epochs_no_improve >= 50:
+        if epochs_no_improve >= 40:
             print(f"⏹ Ранний стоп: PR AUC не улучшается {epochs_no_improve} эпох подряд")
             break
 
