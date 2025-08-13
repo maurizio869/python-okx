@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
 
-SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 60, 5, 0.0035  # 60-мин история, окно 5 мин
+SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035  # 30-мин история, окно 5 мин
 
 def load_dataframe(path: Path) -> pd.DataFrame:
     with open(path) as f: raw = json.load(f)

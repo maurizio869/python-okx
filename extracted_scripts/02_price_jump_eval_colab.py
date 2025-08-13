@@ -22,7 +22,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # ──────────────────────────────────────────────────────────────────
 
 # defaults (will be overwritten by meta if present)
-SEQ_LEN, PRED_WINDOW = 60, 5
+SEQ_LEN, PRED_WINDOW = 30, 5
 THRESHOLD = 0.8
 
 def load_df(path: Path) -> pd.DataFrame:

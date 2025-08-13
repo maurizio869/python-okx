@@ -18,7 +18,7 @@ npz = np.load(DATA_FILE)
 # Восстанавливаем DataFrame
 idx = pd.to_datetime(npz["index"], utc=True)
 
-seq_len = int(npz.get("seq_len", 60)) if hasattr(npz, "get") else int(npz["seq_len"]) if "seq_len" in npz.files else 60
+seq_len = int(npz.get("seq_len", 30)) if hasattr(npz, "get") else int(npz["seq_len"]) if "seq_len" in npz.files else 30
 threshold = float(npz["threshold"]) if "threshold" in npz.files else None
 
 df = pd.DataFrame({
