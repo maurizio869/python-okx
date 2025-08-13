@@ -1,5 +1,5 @@
 # price_jump_train_colab_NEW_LAYERS.py
-# Last modified (MSK): 2025-08-13 23:23
+# Last modified (MSK): 2025-08-14 00:08
 """Обучение LSTM c расширенными признаками:
 OHLC (rel), V (rel), upper_ratio, lower_ratio, body_sign.
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
@@ -148,6 +148,7 @@ ret_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 
 best_pr_auc = -1.0
 best_pnl_sum = -float('inf')
+best_pnl_thr = 0.565
 epochs_no_improve = 0
 for e in range(1, EPOCHS + 1):
     model.train(); total_loss = 0.0
@@ -213,13 +214,14 @@ for e in range(1, EPOCHS + 1):
 
     if pnl_fixed > best_pnl_sum + 1e-12:
         best_pnl_sum = pnl_fixed
+        best_pnl_thr = 0.565
         PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save({
             "model_state": model.state_dict(),
             "scaler": ds.scaler,
             "meta": {"seq_len": SEQ_LEN, "pred_window": PRED_WINDOW}
         }, PNL_MODEL_PATH)
-        print(f"✓ Сохранена лучшая по PnL модель (PNL@0.565={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
+        print(f"✓ Сохранена новая лучшая модель (PNL@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
     else:
         epochs_no_improve += 1
         if epochs_no_improve >= 40:
@@ -227,6 +229,7 @@ for e in range(1, EPOCHS + 1):
             break
 
 print(f"Лучшая модель с PR_AUC={best_pr_auc:.3f} сохранена в {MODEL_PATH.resolve()}")
+print(f"Лучшая модель с pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}% сохранена в {PNL_MODEL_PATH.resolve()}")
 
 # PnL threshold sweep on validation
 print("Подбираем порог по PnL на валидационном наборе…")

@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-13 23:23
+# Last modified (MSK): 2025-08-14 00:08
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
 Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -119,6 +119,8 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
 lossf = nn.CrossEntropyLoss(weight=class_weights)
 
 best_pr_auc = -1.0
+best_pnl_sum = -float('inf')
+best_pnl_thr = 0.565
 epochs_no_improve = 0
 for e in range(1, EPOCHS+1):
     model.train(); tot=0
@@ -199,7 +201,15 @@ for e in range(1, EPOCHS+1):
     
     # scheduler.step already called above
 
+    if pnl_fixed > best_pnl_sum + 1e-12:
+        best_pnl_sum = pnl_fixed
+        best_pnl_thr = 0.565
+        PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        torch.save({"model_state": model.state_dict(), "scaler": ds.scaler, "meta": {"seq_len": SEQ_LEN, "pred_window": PRED_WINDOW}}, PNL_MODEL_PATH)
+        print(f"✓ Сохранена новая лучшая модель (PNL@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
+
 print(f"Лучшая модель с PR_AUC={best_pr_auc:.3f} сохранена в {MODEL_PATH.resolve()}")
+print(f"Лучшая модель с pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}% сохранена в {PNL_MODEL_PATH.resolve()}")
 
 print("Подбираем порог по PnL на валидационном наборе…")
 _ckpt = torch.load(MODEL_PATH, map_location=DEVICE, weights_only=False)
