@@ -132,6 +132,13 @@ train_ds, val_ds = random_split(ds, [len(ds) - val, val])
 train_loader = DataLoader(train_ds, BATCH_SIZE, shuffle=True)
 val_loader   = DataLoader(val_ds, BATCH_SIZE)
 
+# Precompute per-trade returns on validation subset for fixed-threshold PnL (@0.55)
+val_indices = np.asarray(val_ds.indices, dtype=np.int64)
+entry_idx = val_indices + SEQ_LEN
+entry_opens = ds.opens[entry_idx]
+exit_closes = ds.closes[entry_idx + PRED_WINDOW]
+ret_per_trade_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
+
 # модель/опт/шедулер/лосс
 model = LSTMClassifier().to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
@@ -181,6 +188,12 @@ for e in range(1, EPOCHS + 1):
     f1 = f1_score(val_targets, val_preds, zero_division=0)
     pr_auc = average_precision_score(val_targets, val_probs)
 
+    # PnL with fixed threshold 0.55 on validation
+    val_probs_np = np.asarray(val_probs, dtype=np.float32)
+    mask_fixed = val_probs_np >= 0.55
+    trades_fixed = int(mask_fixed.sum())
+    pnl_fixed = float(np.sum(ret_per_trade_val_fixed[mask_fixed])) if trades_fixed > 0 else 0.0
+
     # lr logging via scheduler
     try:
         curr_lr = scheduler.get_last_lr()[0]
@@ -190,7 +203,8 @@ for e in range(1, EPOCHS + 1):
     print(
         f"Epoch {e}/{EPOCHS} lr {curr_lr:.2e} "
         f"loss {total_loss/len(train_ds):.4f} val_acc {corr/tot_s:.3f} "
-        f"F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f}"
+        f"F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} "
+        f"PNL@0.55 {pnl_fixed*100:.2f}% trades={trades_fixed}"
     )
 
     # best-save by PR AUC
