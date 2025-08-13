@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-14 00:32
+# Last modified (MSK): 2025-08-14 00:38
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
 Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -201,7 +201,7 @@ for e in range(1, EPOCHS+1):
         print(f"✓ Сохранена новая лучшая модель (PNL@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
     else:
         epochs_no_improve += 1
-        if epochs_no_improve >= 40:
+        if epochs_no_improve >= 25:
             print(f"⏹ Ранний стоп: PR AUC не улучшается {epochs_no_improve} эпох подряд")
             break
     

@@ -1,5 +1,5 @@
 # price_jump_train_colab_NEW_LAYERS.py
-# Last modified (MSK): 2025-08-14 00:32
+# Last modified (MSK): 2025-08-14 00:38
 """Обучение LSTM c расширенными признаками:
 OHLC (rel), V (rel), upper_ratio, lower_ratio, body_sign.
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
@@ -224,7 +224,7 @@ for e in range(1, EPOCHS + 1):
         print(f"✓ Сохранена новая лучшая модель (PNL@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
     else:
         epochs_no_improve += 1
-        if epochs_no_improve >= 40:
+        if epochs_no_improve >= 25:
             print(f"⏹ Ранний стоп: PR AUC не улучшается {epochs_no_improve} эпох подряд")
             break
 
