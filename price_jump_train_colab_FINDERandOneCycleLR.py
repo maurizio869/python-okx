@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-13 19:59
+# Last modified (MSK): 2025-08-13 20:38
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -20,7 +20,7 @@ MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 VAL_SPLIT, EPOCHS = 0.2, 180
-BATCH_SIZE, BASE_LR = 512, 4.5e-04
+BATCH_SIZE, BASE_LR = 512, 3e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class CandleDataset(Dataset):
@@ -102,11 +102,11 @@ for xb, yb in train_loader:
 print(f"LR Finder: best_lr≈{best_lr:.2e}, best_loss={best_loss:.4f}")
 
 # OneCycleLR на весь ран: max_lr = 1.5×best_lr (в разумных пределах)
-max_lr = float(np.clip(1.5*best_lr, BASE_LR*0.5, BASE_LR*8))
-opt = torch.optim.Adam(model.parameters(), BASE_LR)
+max_lr = float(np.clip(1.2*best_lr, BASE_LR*0.5, BASE_LR*8))
+opt = torch.optim.Adam(model.parameters(), BASE_LR, weight_decay=1e-4)
 sched = torch.optim.lr_scheduler.OneCycleLR(
     opt, max_lr=max_lr, epochs=EPOCHS, steps_per_epoch=len(train_loader),
-    pct_start=0.3, div_factor=25.0, final_div_factor=1e3
+    pct_start=0.45, div_factor=50.0, final_div_factor=1e3
 )
 
 # PnL@0.565 support
@@ -141,15 +141,30 @@ for e in range(1, EPOCHS+1):
     f1=f1_score(val_targets,val_preds,zero_division=0)
     pr_auc=average_precision_score(val_targets,val_probs)
 
+    # compute best-threshold PnL on validation every 5 epochs
     val_probs_np=np.asarray(val_probs,dtype=np.float32)
-    mask_fixed=val_probs_np>=0.565
-    trades_fixed=int(mask_fixed.sum())
-    pnl_fixed=float(np.sum(ret_val_fixed[mask_fixed])) if trades_fixed>0 else 0.0
+    if e % 5 == 0 or e == 1:
+        best_comp=-np.inf; best_thr=last_best_thr; best_trades=0; best_sum=0.0
+        for t in np.arange(thr_min,thr_max+1e-12,thr_step):
+            m=(val_probs_np>=t); n=int(m.sum())
+            if n==0: comp=-np.inf; sret=0.0
+            else:
+                r=ret_val_fixed[m]
+                comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
+                sret=float(np.sum(r))
+            if comp>best_comp:
+                best_comp=comp; best_thr=float(t); best_trades=n; best_sum=sret
+        last_best_thr = best_thr
+        pnl_best_sum = best_sum
+        trades_best = best_trades
+    else:
+        m=(val_probs_np>=last_best_thr); trades_best=int(m.sum())
+        pnl_best_sum = float(np.sum(ret_val_fixed[m])) if trades_best>0 else 0.0
 
     curr_lr = opt.param_groups[0]['lr']
     print(f'Epoch {e}/{EPOCHS} lr {curr_lr:.2e} loss {total_loss/len(train_ds):.4f} '
           f'val_acc {corr/tot_s:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} '
-          f'PNL@0.565 {pnl_fixed*100:.2f}% trades={trades_fixed}')
+          f'PNL@best(thr={last_best_thr:.4f}) {pnl_best_sum*100:.2f}% trades={trades_best}')
 
     if pr_auc > best_pr_auc + 1e-6:
         best_pr_auc = pr_auc; epochs_no_improve = 0
@@ -163,13 +178,13 @@ for e in range(1, EPOCHS+1):
             print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")
         print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
     
-    # save best-by-PnL
-    if pnl_fixed > best_pnl_sum + 1e-12:
-        best_pnl_sum = pnl_fixed
+    # save best-by-PnL (using best-threshold PnL sum)
+    if pnl_best_sum > best_pnl_sum + 1e-12:
+        best_pnl_sum = pnl_best_sum
         PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
                     "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, PNL_MODEL_PATH)
-        print(f"✓ Сохранена лучшая по PnL модель (PNL@0.565={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
+        print(f"✓ Сохранена лучшая по PnL модель (PNL@best={best_pnl_sum*100:.2f}% thr={last_best_thr:.4f}) в {PNL_MODEL_PATH.resolve()}")
     else:
         epochs_no_improve += 1
         if epochs_no_improve >= 40:
