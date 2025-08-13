@@ -1,5 +1,5 @@
 # price_jump_train_colab_NEW_LAYERS.py
-# Last modified (MSK): 2025-08-13 23:14
+# Last modified (MSK): 2025-08-13 23:22
 """Обучение LSTM c расширенными признаками:
 OHLC (rel), V (rel), upper_ratio, lower_ratio, body_sign.
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
@@ -22,7 +22,7 @@ MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 VAL_SPLIT, EPOCHS = 0.2, 250
-BATCH_SIZE, LR = 512, 4.5e-04
+BATCH_SIZE, LR = 512, 5e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
@@ -133,7 +133,7 @@ val_loader   = DataLoader(val_ds, BATCH_SIZE)
 
 model = LSTMClassifier().to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
-current_patience = 6
+current_patience = 7
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
     opt, mode='max', patience=current_patience, factor=0.5, min_lr=1e-6
 )
