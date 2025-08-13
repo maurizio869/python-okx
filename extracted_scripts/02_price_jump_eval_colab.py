@@ -94,10 +94,32 @@ with torch.no_grad():
         probs[ptr:ptr+len(probs_batch)] = probs_batch[:, 1]
         ptr += len(probs_batch)
 
+# binarize by chosen threshold
 preds = (probs >= best_threshold).astype(np.int8)
+
+# Compute PnL stats using alignment with probs/preds
+opens_arr  = df["o"].astype(np.float32).values
+closes_arr = df["c"].astype(np.float32).values
+entry_opens = opens_arr[SEQ_LEN : len(df) - PRED_WINDOW]
+exit_closes = closes_arr[SEQ_LEN + PRED_WINDOW : len(df)]
+ret_per_trade = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
+
+mask = probs >= best_threshold
+num_trades = int(mask.sum())
+if num_trades > 0:
+    r = ret_per_trade[mask]
+    sum_pnl = float(np.sum(r))
+    if np.any(r <= -0.999999):
+        comp_ret = -1.0
+    else:
+        comp_ret = float(np.exp(np.sum(np.log1p(r))) - 1.0)
+    sharpe = float(np.mean(r) / (np.std(r) + 1e-12)) if r.size >= 2 else 0.0
+else:
+    sum_pnl, comp_ret, sharpe = 0.0, float('-inf'), 0.0
 
 print(f"Сделано {len(preds)} предсказаний")
 print(f"Используем порог: {best_threshold:.4f} ({'из meta' if 'threshold' in (meta or {}) else 'по умолчанию'})")
+print(f"PnL: trades={num_trades} pnl_sum={sum_pnl*100:.2f}% comp_ret={comp_ret*100 if np.isfinite(comp_ret) else float('nan'):.2f}% sharpe={sharpe:.2f}")
 print(f"Предсказаний 0: {np.sum(preds == 0)}")
 print(f"Предсказаний 1: {np.sum(preds == 1)}")
 print(f"Процент предсказаний 1: {np.mean(preds == 1)*100:.2f}%")
