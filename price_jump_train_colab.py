@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-13 21:01
+# Last modified (MSK): 2025-08-13 22:59
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
 Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -155,6 +155,9 @@ for e in range(1, EPOCHS+1):
         roc_auc = float('nan')
     f1 = f1_score(val_targets, val_preds, zero_division=0)
     pr_auc = average_precision_score(val_targets, val_probs)
+    # normalized PR AUC relative to positive rate p
+    p_rate = float(np.mean(val_targets)) if len(val_targets) else 0.0
+    npr_auc = (pr_auc - p_rate) / (1.0 - p_rate + 1e-12)
     
     # PnL with fixed threshold 0.565 on validation
     val_probs_np = np.asarray(val_probs, dtype=np.float32)
@@ -168,7 +171,7 @@ for e in range(1, EPOCHS+1):
     except Exception:
         curr_lr = opt.param_groups[0]['lr']
     print(f'Epoch {e}/{EPOCHS} lr {curr_lr:.2e} loss {tot/len(train_ds):.4f} '
-          f'val_acc {corr/tot_s:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} '
+          f'val_acc {corr/tot_s:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} nPR_AUC {npr_auc:.3f} '
           f'PNL@0.565 {pnl_fixed*100:.2f}% trades={trades_fixed}')
 
     # step scheduler and dynamically expand patience on LR reduction

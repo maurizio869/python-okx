@@ -1,5 +1,5 @@
 # price_jump_train_colab_NEW_LAYERS.py
-# Last modified (MSK): 2025-08-13 21:01
+# Last modified (MSK): 2025-08-13 22:59
 """Обучение LSTM c расширенными признаками:
 OHLC (rel), V (rel), upper_ratio, lower_ratio, body_sign.
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
@@ -174,6 +174,8 @@ for e in range(1, EPOCHS + 1):
         roc_auc = float('nan')
     f1 = f1_score(val_targets, val_preds, zero_division=0)
     pr_auc = average_precision_score(val_targets, val_probs)
+    p_rate = float(np.mean(val_targets)) if len(val_targets) else 0.0
+    npr_auc = (pr_auc - p_rate) / (1.0 - p_rate + 1e-12)
 
     # PnL@0.565
     val_probs_np = np.asarray(val_probs, dtype=np.float32)
@@ -187,7 +189,7 @@ for e in range(1, EPOCHS + 1):
     print(
         f"Epoch {e}/{EPOCHS} lr {curr_lr:.2e} "
         f"loss {total_loss/len(train_ds):.4f} val_acc {corr/tot_s:.3f} "
-        f"F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} "
+        f"F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} nPR_AUC {npr_auc:.3f} "
         f"PNL@0.565 {pnl_fixed*100:.2f}% trades={trades_fixed}"
     )
 
