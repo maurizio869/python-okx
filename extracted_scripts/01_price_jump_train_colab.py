@@ -104,7 +104,7 @@ vl = DataLoader(val_ds,BATCH_SIZE)
 model = LSTMClassifier().to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    opt, mode='max', patience=10, factor=0.5, min_lr=1e-6, verbose=True
+    opt, mode='max', patience=10, factor=0.5, min_lr=1e-6
 )
 lossf = nn.CrossEntropyLoss(weight=class_weights)
 
@@ -142,7 +142,11 @@ for e in range(1, EPOCHS+1):
     f1 = f1_score(val_targets, val_preds, zero_division=0)
     pr_auc = average_precision_score(val_targets, val_probs)
     
-    curr_lr = opt.param_groups[0]['lr']
+    # prefer scheduler.get_last_lr when available
+    try:
+        curr_lr = scheduler.get_last_lr()[0]
+    except Exception:
+        curr_lr = opt.param_groups[0]['lr']
     print(f'Epoch {e}/{EPOCHS} lr {curr_lr:.2e} loss {tot/len(train_ds):.4f} '
           f'val_acc {corr/tot_s:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f}')
 
