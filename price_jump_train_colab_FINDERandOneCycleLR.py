@@ -1,9 +1,9 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-13 21:42
+# Last modified (MSK): 2025-08-13 22:05
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
-Остальное: как в базовом тренинге (v-канал, SEQ_LEN=30, ранний стоп по PR AUC, PnL@0.565, подбор порога по PnL).
+Остальное: как в базовом тренинге (v-канал, SEQ_LEN=30, ранний стоп по PR AUC, PnL@best, подбор порога по PnL).
 """
 from pathlib import Path
 import json, math
@@ -19,7 +19,7 @@ TRAIN_JSON = Path("candles_10d.json")
 MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
-VAL_SPLIT, EPOCHS = 0.2, 50
+VAL_SPLIT, EPOCHS = 0.2, 55
 BATCH_SIZE, BASE_LR = 512, 3e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -110,8 +110,9 @@ sched = torch.optim.lr_scheduler.OneCycleLR(
 )
 
 # PnL@best threshold support
-thr_min,thr_max,thr_step=0.30,0.70,0.0025
+thr_min,thr_max,thr_step=0.15,0.60,0.0025
 last_best_thr = 0.565
+best_pnl_thr = last_best_thr
 
 # PnL@0.565 support
 val_indices = np.asarray(val_ds.indices, dtype=np.int64)
@@ -185,6 +186,7 @@ for e in range(1, EPOCHS+1):
     # save best-by-PnL (using best-threshold PnL sum)
     if pnl_best_sum > best_pnl_sum + 1e-12:
         best_pnl_sum = pnl_best_sum
+        best_pnl_thr = last_best_thr
         PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
                     "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, PNL_MODEL_PATH)
@@ -195,8 +197,11 @@ for e in range(1, EPOCHS+1):
             print(f"⏹ Ранний стоп: PR AUC не улучшается {epochs_no_improve} эпох подряд"); break
 
 print(f"Лучшая модель с PR_AUC={best_pr_auc:.3f} сохранена в {MODEL_PATH.resolve()}")
+# Печать финального статуса лучшей по PnL модели
+if best_pnl_sum > -float('inf'):
+    print(f"Лучшая модель с pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}% сохранена в {PNL_MODEL_PATH.resolve()}")
 
-# PnL threshold sweep (0.43..0.70 step 0.0025)
+# PnL threshold sweep (0.15..0.60 step 0.0025)
 print("Подбираем порог по PnL на валидационном наборе…")
 ckpt = torch.load(MODEL_PATH, map_location=DEVICE, weights_only=False)
 model.load_state_dict(ckpt["model_state"]); model.to(DEVICE).eval()
@@ -208,7 +213,7 @@ with torch.no_grad():
         val_probs_all[ptr:ptr+len(prob1)] = prob1; ptr += len(prob1)
 entry_opens = ds.opens[entry_idx]; exit_closes = ds.closes[entry_idx+PRED_WINDOW]
 ret_val = exit_closes/np.maximum(entry_opens,1e-12)-1.0
-thr_min,thr_max,thr_step=0.30,0.70,0.0025
+thr_min,thr_max,thr_step=0.15,0.60,0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
 thresholds=np.arange(thr_min,thr_max+1e-12,thr_step)
 best_comp=-np.inf; best_thr=float(thresholds[0]); best_trades=0
