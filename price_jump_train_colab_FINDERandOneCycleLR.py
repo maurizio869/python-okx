@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-14 12:02
+# Last modified (MSK): 2025-08-14 12:18
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -140,6 +140,7 @@ ret_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 best_pr_auc = -1.0
 best_pnl_sum = -float('inf')
 epochs_no_improve = 0
+lr_curve = [] # Initialize lr_curve here
 for e in range(1, EPOCHS+1):
     model.train(); total_loss=0.0
     for xb,yb in train_loader:
@@ -281,5 +282,11 @@ try:
     plt.grid(True, alpha=0.3); plt.tight_layout()
     plt.savefig('onecycle_lr_curve.png', dpi=120)
     print("Saved LR curve to onecycle_lr_curve.png")
+    # Try to display inside notebooks
+    try:
+        from IPython.display import Image, display
+        display(Image('onecycle_lr_curve.png'))
+    except Exception:
+        pass
 except Exception as ex:
     print(f"! Не удалось построить/сохранить график LR: {ex}")
