@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-14 12:33
+# Last modified (MSK): 2025-08-14 14:07
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -166,7 +166,11 @@ ret_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 best_pr_auc = -1.0
 best_pnl_sum = -float('inf')
 epochs_no_improve = 0
-lr_curve = [] # Initialize lr_curve here
+# Lists to collect per-epoch metrics for post-training plots
+lr_curve = []
+pr_auc_curve = []
+pnl_curve_pct = []
+val_acc_curve = []
 for e in range(1, EPOCHS+1):
     model.train(); total_loss=0.0
     for xb,yb in train_loader:
@@ -174,8 +178,6 @@ for e in range(1, EPOCHS+1):
         opt.zero_grad(); logits=model(xb); loss=lossf(logits,yb)
         loss.backward(); opt.step(); sched.step()
         total_loss += loss.item()*xb.size(0)
-    # фиксируем средний lr текущей эпохи
-    lr_curve.append(opt.param_groups[0]['lr'])
 
     model.eval(); corr=tot_s=0
     val_targets=[]; val_probs=[]; val_preds=[]
@@ -222,9 +224,16 @@ for e in range(1, EPOCHS+1):
             pnl_best_sum = 0.0
 
     curr_lr = opt.param_groups[0]['lr']
+    val_acc = (corr/tot_s) if tot_s>0 else 0.0
     print(f'Epoch {e}/{EPOCHS} lr {curr_lr:.2e} loss {total_loss/len(train_ds):.4f} '
-          f'val_acc {corr/tot_s:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} '
+          f'val_acc {val_acc:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} '
           f'PNL@best(thr={last_best_thr:.4f}) {pnl_best_sum*100:.2f}% trades={trades_best}')
+
+    # collect curves
+    lr_curve.append(curr_lr)
+    pr_auc_curve.append(float(pr_auc))
+    pnl_curve_pct.append(float(pnl_best_sum*100.0))
+    val_acc_curve.append(float(val_acc))
 
     if pr_auc > best_pr_auc + 1e-6:
         best_pr_auc = pr_auc; epochs_no_improve = 0
@@ -299,3 +308,31 @@ try:
         json.dump({"seq_len":int(SEQ_LEN),"pred_window":int(PRED_WINDOW),"threshold":float(best_thr)}, mf)
 except Exception as ex:
     print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")
+
+# Пост-обучающий график: нормализованные кривые LR, PR_AUC, PnL%(@thr), ValAcc
+try:
+    curves = {
+        'LR': np.asarray(lr_curve, dtype=np.float64),
+        'PR_AUC': np.asarray(pr_auc_curve, dtype=np.float64),
+        'PnL%': np.asarray(pnl_curve_pct, dtype=np.float64),
+        'ValAcc': np.asarray(val_acc_curve, dtype=np.float64),
+    }
+    eps = 1e-12
+    plt.figure(figsize=(7,4))
+    for name, arr in curves.items():
+        if arr.size == 0:
+            continue
+        arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + eps)
+        plt.plot(range(1, len(arr_norm)+1), arr_norm, label=name)
+    plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]')
+    plt.title('Training curves (normalized): LR, PR_AUC, PnL%@thr, ValAcc')
+    plt.grid(True, alpha=0.3); plt.legend(); plt.tight_layout()
+    plt.savefig('training_curves.png', dpi=120)
+    print("Saved post-training curves to training_curves.png")
+    try:
+        from IPython.display import Image, display
+        display(Image('training_curves.png'))
+    except Exception:
+        pass
+except Exception as ex:
+    print(f"! Не удалось построить/сохранить пост-обучающие кривые: {ex}")
