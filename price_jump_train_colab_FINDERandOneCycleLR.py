@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-14 10:41
+# Last modified (MSK): 2025-08-14 12:02
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -10,6 +10,7 @@ import json, math
 import numpy as np
 import pandas as pd
 import torch, torch.nn as nn
+import matplotlib.pyplot as plt
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
@@ -21,6 +22,18 @@ PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 VAL_SPLIT, EPOCHS = 0.2, 100
 BATCH_SIZE, BASE_LR = 512, 3e-4
+# Tunable LR Finder params
+LR_FINDER_MIN_FACTOR = 1.0/20.0  # min_lr = BASE_LR * LR_FINDER_MIN_FACTOR
+LR_FINDER_MAX_FACTOR = 8.0       # max_lr = BASE_LR * LR_FINDER_MAX_FACTOR
+# How to pick OneCycle max_lr from best_lr and clip range around BASE_LR
+BEST_LR_MULTIPLIER = 1.2         # max_lr ~ BEST_LR_MULTIPLIER * best_lr
+CLIP_MIN_FACTOR = 0.5            # clip lower bound = BASE_LR * CLIP_MIN_FACTOR
+CLIP_MAX_FACTOR = 8.0            # clip upper bound = BASE_LR * CLIP_MAX_FACTOR
+# OneCycleLR shape parameters
+ONECYCLE_PCT_START = 0.45
+ONECYCLE_DIV_FACTOR = 50.0
+ONECYCLE_FINAL_DIV_FACTOR = 1e3
+WEIGHT_DECAY = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class CandleDataset(Dataset):
@@ -85,7 +98,7 @@ lossf = nn.CrossEntropyLoss()
 
 # LR Finder: 1 эпоха по train_loader, lr от BASE_LR/20 до BASE_LR*8
 print("LR Finder: старт…")
-min_lr, max_lr = BASE_LR/20, BASE_LR*8
+min_lr, max_lr = BASE_LR*LR_FINDER_MIN_FACTOR, BASE_LR*LR_FINDER_MAX_FACTOR
 num_steps = max(1, len(train_loader))
 lr_mult = (max_lr/min_lr) ** (1/num_steps)
 print(f"LR Finder params: BASE_LR={BASE_LR:.2e}, min_lr={min_lr:.2e}, max_lr={max_lr:.2e}, num_steps={num_steps}, lr_mult≈{lr_mult:.6f}")
@@ -102,10 +115,10 @@ for xb, yb in train_loader:
     step_id += 1
 print(f"LR Finder: best_lr≈{best_lr:.2e}, best_loss={best_loss:.4f}")
 
-# OneCycleLR на весь ран: max_lr = 1.5×best_lr (в разумных пределах)
-max_lr = float(np.clip(1.2*best_lr, BASE_LR*0.5, BASE_LR*8))
-opt = torch.optim.Adam(model.parameters(), BASE_LR, weight_decay=1e-4)
-pct_start=0.45; div_factor=50.0; final_div_factor=1e3; weight_decay=1e-4
+# OneCycleLR на весь ран: max_lr = BEST_LR_MULTIPLIER×best_lr (clipped)
+max_lr = float(np.clip(BEST_LR_MULTIPLIER*best_lr, BASE_LR*CLIP_MIN_FACTOR, BASE_LR*CLIP_MAX_FACTOR))
+opt = torch.optim.Adam(model.parameters(), BASE_LR, weight_decay=WEIGHT_DECAY)
+pct_start=ONECYCLE_PCT_START; div_factor=ONECYCLE_DIV_FACTOR; final_div_factor=ONECYCLE_FINAL_DIV_FACTOR; weight_decay=WEIGHT_DECAY
 print(f"OneCycleLR params: epochs={EPOCHS}, steps_per_epoch={len(train_loader)}, BASE_LR={BASE_LR:.2e}, max_lr={max_lr:.2e}, pct_start={pct_start}, div_factor={div_factor}, final_div_factor={final_div_factor}, weight_decay={weight_decay}")
 sched = torch.optim.lr_scheduler.OneCycleLR(
     opt, max_lr=max_lr, epochs=EPOCHS, steps_per_epoch=len(train_loader),
@@ -134,6 +147,8 @@ for e in range(1, EPOCHS+1):
         opt.zero_grad(); logits=model(xb); loss=lossf(logits,yb)
         loss.backward(); opt.step(); sched.step()
         total_loss += loss.item()*xb.size(0)
+    # фиксируем средний lr текущей эпохи
+    lr_curve.append(opt.param_groups[0]['lr'])
 
     model.eval(); corr=tot_s=0
     val_targets=[]; val_probs=[]; val_preds=[]
@@ -257,3 +272,14 @@ try:
         json.dump({"seq_len":int(SEQ_LEN),"pred_window":int(PRED_WINDOW),"threshold":float(best_thr)}, mf)
 except Exception as ex:
     print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")
+
+# После обучения — отрисуем маленький график lr по эпохам
+try:
+    plt.figure(figsize=(6,3))
+    plt.plot(range(1, len(lr_curve)+1), lr_curve, label='LR')
+    plt.xlabel('Epoch'); plt.ylabel('Learning Rate'); plt.title('OneCycle LR by epoch')
+    plt.grid(True, alpha=0.3); plt.tight_layout()
+    plt.savefig('onecycle_lr_curve.png', dpi=120)
+    print("Saved LR curve to onecycle_lr_curve.png")
+except Exception as ex:
+    print(f"! Не удалось построить/сохранить график LR: {ex}")
