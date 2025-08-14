@@ -1,5 +1,5 @@
 # lstm_jump_dropout_p_find.py
-# Last modified (MSK): 2025-08-14 15:20
+# Last modified (MSK): 2025-08-14 15:23
 """Быстрый свип по dropout p, с кратким LR Finder и коротким обучением.
 Записывает выбранные 'dropout' и 'base_lr' в meta (MODEL_META_PATH), не стирая остальные поля.
 """
@@ -20,7 +20,7 @@ BATCH_SIZE = 512
 BASE_LR_DEFAULT = 3e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-P_GRID = [0.2, 0.3, 0.4]
+P_GRID = [0.2, 0.225, 0.25, 0.275, 0.3, 0.325, 0.35, 0.375, 0.4]
 SHORT_EPOCHS = 12
 LR_FINDER_MIN_FACTOR = 1.0/20.0
 LR_FINDER_MAX_FACTOR = 8.0
@@ -144,10 +144,9 @@ def main():
 				loss.backward(); opt.step(); sched.step()
 		# Оценка
 		pr_auc, pnl_sum = evaluate_pr_auc_and_pnl(model, val_loader, DEVICE, ds, val_ds)
-		score = pr_auc + 0.0*pnl_sum  # базовый композитный скор; при желании поменять вес
-		print(f"p={p} => PR_AUC={pr_auc:.3f}, PnL@0.565={pnl_sum*100:.2f}% (score={score:.4f})")
-		if score > best_score:
-			best_score = score; best_p = p; best_base_lr = BASE_LR_DEFAULT
+		print(f"p={p} => PR_AUC={pr_auc:.3f}, PnL@0.565={pnl_sum*100:.2f}%")
+		if pr_auc > best_score:
+			best_score = pr_auc; best_p = p; best_base_lr = BASE_LR_DEFAULT
 
 	print(f"\nВыбрано: dropout p={best_p}, base_lr={best_base_lr:.2e}")
 	# Обновляем/дописываем meta
