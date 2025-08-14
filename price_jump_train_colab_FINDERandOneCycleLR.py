@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-14 14:07
+# Last modified (MSK): 2025-08-14 14:23
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import torch, torch.nn as nn
 import matplotlib.pyplot as plt
+from matplotlib.ticker import FuncFormatter
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
@@ -141,6 +142,11 @@ try:
     plt.plot(range(1, len(planned_lr)+1), planned_lr, label='Planned LR')
     plt.xlabel('Epoch'); plt.ylabel('Learning Rate'); plt.title('Planned OneCycle LR by epoch')
     plt.grid(True, alpha=0.3); plt.tight_layout()
+    # format y-axis as scientific like 5e-4 instead of 0.0005
+    def _sci_fmt(y, pos):
+        s = f"{y:.0e}"
+        return s.replace('e-0','e-').replace('e+0','e+')
+    plt.gca().yaxis.set_major_formatter(FuncFormatter(_sci_fmt))
     plt.savefig('onecycle_lr_curve.png', dpi=120)
     print("Saved LR curve to onecycle_lr_curve.png (planned)")
     try:
