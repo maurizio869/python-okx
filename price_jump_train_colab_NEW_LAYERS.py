@@ -1,5 +1,5 @@
 # price_jump_train_colab_NEW_LAYERS.py
-# Last modified (MSK): 2025-08-14 10:14
+# Last modified (MSK): 2025-08-14 15:20
 """Обучение LSTM c расширенными признаками:
 OHLC (rel), V (rel), upper_ratio, lower_ratio, body_sign.
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
@@ -131,7 +131,21 @@ train_ds, val_ds = random_split(ds, [len(ds) - val, val])
 train_loader = DataLoader(train_ds, BATCH_SIZE, shuffle=True)
 val_loader   = DataLoader(val_ds, BATCH_SIZE)
 
-model = LSTMClassifier().to(DEVICE)
+# Optional overrides from meta
+DROPOUT_P = 0.3
+try:
+	if MODEL_META_PATH.exists():
+		with open(MODEL_META_PATH, 'r', encoding='utf-8') as mf:
+			meta0 = json.load(mf)
+		if isinstance(meta0, dict):
+			if 'dropout' in meta0:
+				DROPOUT_P = float(meta0['dropout'])
+			if 'base_lr' in meta0:
+				LR = float(meta0['base_lr'])
+except Exception as ex:
+	print(f"! Не удалось прочитать meta для dropout/base_lr: {ex}")
+
+model = LSTMClassifier(dropout=DROPOUT_P).to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
 current_patience = 9
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(

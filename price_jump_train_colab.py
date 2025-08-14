@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-14 10:14
+# Last modified (MSK): 2025-08-14 15:20
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
 Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -113,7 +113,21 @@ entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
 ret_per_trade_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 
-model = LSTMClassifier().to(DEVICE)
+# Optional overrides from meta
+DROPOUT_P = 0.3
+try:
+    if MODEL_META_PATH.exists():
+        with open(MODEL_META_PATH, 'r', encoding='utf-8') as mf:
+            meta0 = json.load(mf)
+        if isinstance(meta0, dict):
+            if 'dropout' in meta0:
+                DROPOUT_P = float(meta0['dropout'])
+            if 'base_lr' in meta0:
+                LR = float(meta0['base_lr'])
+except Exception as ex:
+    print(f"! Не удалось прочитать meta для dropout/base_lr: {ex}")
+
+model = LSTMClassifier(dropout=DROPOUT_P).to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
 current_patience = 9
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
