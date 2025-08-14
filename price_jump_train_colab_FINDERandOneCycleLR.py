@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-13 22:37
+# Last modified (MSK): 2025-08-14 10:41
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -19,7 +19,7 @@ TRAIN_JSON = Path("candles_10d.json")
 MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
-VAL_SPLIT, EPOCHS = 0.2, 60
+VAL_SPLIT, EPOCHS = 0.2, 100
 BATCH_SIZE, BASE_LR = 512, 3e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -88,6 +88,7 @@ print("LR Finder: старт…")
 min_lr, max_lr = BASE_LR/20, BASE_LR*8
 num_steps = max(1, len(train_loader))
 lr_mult = (max_lr/min_lr) ** (1/num_steps)
+print(f"LR Finder params: BASE_LR={BASE_LR:.2e}, min_lr={min_lr:.2e}, max_lr={max_lr:.2e}, num_steps={num_steps}, lr_mult≈{lr_mult:.6f}")
 for pg in opt.param_groups: pg['lr'] = min_lr
 best_loss = float('inf'); best_lr = BASE_LR
 model.train(); step_id=0
@@ -104,9 +105,11 @@ print(f"LR Finder: best_lr≈{best_lr:.2e}, best_loss={best_loss:.4f}")
 # OneCycleLR на весь ран: max_lr = 1.5×best_lr (в разумных пределах)
 max_lr = float(np.clip(1.2*best_lr, BASE_LR*0.5, BASE_LR*8))
 opt = torch.optim.Adam(model.parameters(), BASE_LR, weight_decay=1e-4)
+pct_start=0.45; div_factor=50.0; final_div_factor=1e3; weight_decay=1e-4
+print(f"OneCycleLR params: epochs={EPOCHS}, steps_per_epoch={len(train_loader)}, BASE_LR={BASE_LR:.2e}, max_lr={max_lr:.2e}, pct_start={pct_start}, div_factor={div_factor}, final_div_factor={final_div_factor}, weight_decay={weight_decay}")
 sched = torch.optim.lr_scheduler.OneCycleLR(
     opt, max_lr=max_lr, epochs=EPOCHS, steps_per_epoch=len(train_loader),
-    pct_start=0.45, div_factor=50.0, final_div_factor=1e3
+    pct_start=pct_start, div_factor=div_factor, final_div_factor=final_div_factor
 )
 
 # PnL@best threshold support
