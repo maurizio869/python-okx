@@ -1,5 +1,5 @@
 # lstm_jump_dropout_p_find.py
-# Last modified (MSK): 2025-08-14 17:55
+# Last modified (MSK): 2025-08-14 18:11
 """Быстрый свип по dropout p, с кратким LR Finder и коротким обучением.
 Записывает выбранные 'dropout' и 'base_lr' в meta (MODEL_META_PATH), не стирая остальные поля.
 """
@@ -15,6 +15,7 @@ SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035
 TRAIN_JSON = Path("candles_10d.json")
 MODEL_PATH = Path("lstm_jump.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
+HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
 VAL_SPLIT = 0.2
 BATCH_SIZE = 512
 BASE_LR_DEFAULT = 3e-4
@@ -149,21 +150,21 @@ def main():
 			best_score = pr_auc; best_p = p; best_base_lr = BASE_LR_DEFAULT
 
 	print(f"\nВыбрано: dropout p={best_p}, base_lr={best_base_lr:.2e}")
-	# Обновляем/дописываем meta
-	meta = {}
-	if MODEL_META_PATH.exists():
+	# Обновляем/дописываем hyper (отдельный файл)
+	hyper = {}
+	if HYPER_PATH.exists():
 		try:
-			with open(MODEL_META_PATH,'r',encoding='utf-8') as mf:
-				meta = json.load(mf)
+			with open(HYPER_PATH,'r',encoding='utf-8') as hf:
+				hyper = json.load(hf)
 		except Exception:
-			meta = {}
-	if not isinstance(meta, dict):
-		meta = {}
-	meta['dropout'] = float(best_p)
-	meta['base_lr'] = float(best_base_lr)
-	with open(MODEL_META_PATH,'w',encoding='utf-8') as mf:
-		json.dump(meta, mf)
-	print(f"Сохранено в meta: dropout={best_p}, base_lr={best_base_lr:.2e} -> {MODEL_META_PATH}")
+			hyper = {}
+	if not isinstance(hyper, dict):
+		hyper = {}
+	hyper['dropout'] = float(best_p)
+	hyper['base_lr'] = float(best_base_lr)
+	with open(HYPER_PATH,'w',encoding='utf-8') as hf:
+		json.dump(hyper, hf)
+	print(f"Сохранено в {HYPER_PATH}: dropout={best_p}, base_lr={best_base_lr:.2e}")
 
 if __name__ == '__main__':
 	main()
