@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-14 15:20
+# Last modified (MSK): 2025-08-14 15:52
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
 Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -115,6 +115,8 @@ ret_per_trade_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 
 # Optional overrides from meta
 DROPOUT_P = 0.3
+_got_dropout = False
+_got_base_lr = False
 try:
     if MODEL_META_PATH.exists():
         with open(MODEL_META_PATH, 'r', encoding='utf-8') as mf:
@@ -122,10 +124,24 @@ try:
         if isinstance(meta0, dict):
             if 'dropout' in meta0:
                 DROPOUT_P = float(meta0['dropout'])
+                _got_dropout = True
             if 'base_lr' in meta0:
                 LR = float(meta0['base_lr'])
+                _got_base_lr = True
 except Exception as ex:
     print(f"! Не удалось прочитать meta для dropout/base_lr: {ex}")
+
+if _got_dropout and _got_base_lr:
+    print(f"Из meta {MODEL_META_PATH} прочитано: dropout={DROPOUT_P:.3f}, base_lr={LR:.2e}")
+else:
+    if _got_dropout:
+        print(f"Из meta {MODEL_META_PATH} прочитано: dropout={DROPOUT_P:.3f}")
+    else:
+        print(f"dropout взят по умолчанию: {DROPOUT_P:.3f}")
+    if _got_base_lr:
+        print(f"Из meta {MODEL_META_PATH} прочитано: base_lr={LR:.2e}")
+    else:
+        print(f"base_lr взят по умолчанию: {LR:.2e}")
 
 model = LSTMClassifier(dropout=DROPOUT_P).to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)

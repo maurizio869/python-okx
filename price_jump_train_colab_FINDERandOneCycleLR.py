@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-14 15:20
+# Last modified (MSK): 2025-08-14 15:52
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -95,6 +95,8 @@ val_loader   = DataLoader(val_ds,BATCH_SIZE)
 
 # Read optional overrides for dropout and base_lr from meta
 DROPOUT_P = 0.3
+_got_dropout = False
+_got_base_lr = False
 try:
     if MODEL_META_PATH.exists():
         with open(MODEL_META_PATH, 'r', encoding='utf-8') as mf:
@@ -102,10 +104,24 @@ try:
         if isinstance(meta0, dict):
             if 'dropout' in meta0:
                 DROPOUT_P = float(meta0['dropout'])
+                _got_dropout = True
             if 'base_lr' in meta0:
                 BASE_LR = float(meta0['base_lr'])
+                _got_base_lr = True
 except Exception as ex:
     print(f"! Не удалось прочитать meta для dropout/base_lr: {ex}")
+
+if _got_dropout and _got_base_lr:
+    print(f"Из meta {MODEL_META_PATH} прочитано: dropout={DROPOUT_P:.3f}, base_lr={BASE_LR:.2e}")
+else:
+    if _got_dropout:
+        print(f"Из meta {MODEL_META_PATH} прочитано: dropout={DROPOUT_P:.3f}")
+    else:
+        print(f"dropout взят по умолчанию: {DROPOUT_P:.3f}")
+    if _got_base_lr:
+        print(f"Из meta {MODEL_META_PATH} прочитано: base_lr={BASE_LR:.2e}")
+    else:
+        print(f"base_lr взят по умолчанию: {BASE_LR:.2e}")
 
 model = LSTMClassifier(dropout=DROPOUT_P).to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), BASE_LR)
