@@ -1,5 +1,5 @@
 # lstm_jump_dropout_p_find.py
-# Last modified (MSK): 2025-08-14 17:40
+# Last modified (MSK): 2025-08-14 17:55
 """Быстрый свип по dropout p, с кратким LR Finder и коротким обучением.
 Записывает выбранные 'dropout' и 'base_lr' в meta (MODEL_META_PATH), не стирая остальные поля.
 """
@@ -167,3 +167,5 @@ def main():
 
 if __name__ == '__main__':
 	main()
+
+# EOF
