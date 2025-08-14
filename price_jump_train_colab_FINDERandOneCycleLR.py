@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-14 12:18
+# Last modified (MSK): 2025-08-14 12:33
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -124,6 +124,32 @@ sched = torch.optim.lr_scheduler.OneCycleLR(
     opt, max_lr=max_lr, epochs=EPOCHS, steps_per_epoch=len(train_loader),
     pct_start=pct_start, div_factor=div_factor, final_div_factor=final_div_factor
 )
+
+# До начала обучения: построим и выведем планируемую кривую LR по эпохам (OneCycle)
+try:
+    tmp_opt = torch.optim.Adam(model.parameters(), BASE_LR, weight_decay=WEIGHT_DECAY)
+    tmp_sched = torch.optim.lr_scheduler.OneCycleLR(
+        tmp_opt, max_lr=max_lr, epochs=EPOCHS, steps_per_epoch=len(train_loader),
+        pct_start=pct_start, div_factor=div_factor, final_div_factor=final_div_factor
+    )
+    planned_lr = []
+    for _ep in range(EPOCHS):
+        for _ in range(len(train_loader)):
+            tmp_sched.step()
+        planned_lr.append(tmp_opt.param_groups[0]['lr'])
+    plt.figure(figsize=(6,3))
+    plt.plot(range(1, len(planned_lr)+1), planned_lr, label='Planned LR')
+    plt.xlabel('Epoch'); plt.ylabel('Learning Rate'); plt.title('Planned OneCycle LR by epoch')
+    plt.grid(True, alpha=0.3); plt.tight_layout()
+    plt.savefig('onecycle_lr_curve.png', dpi=120)
+    print("Saved LR curve to onecycle_lr_curve.png (planned)")
+    try:
+        from IPython.display import Image, display
+        display(Image('onecycle_lr_curve.png'))
+    except Exception:
+        pass
+except Exception as ex:
+    print(f"! Не удалось построить/сохранить дообучающий график LR: {ex}")
 
 # PnL@best threshold support
 thr_min,thr_max,thr_step=0.15,0.60,0.0025
@@ -273,20 +299,3 @@ try:
         json.dump({"seq_len":int(SEQ_LEN),"pred_window":int(PRED_WINDOW),"threshold":float(best_thr)}, mf)
 except Exception as ex:
     print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")
-
-# После обучения — отрисуем маленький график lr по эпохам
-try:
-    plt.figure(figsize=(6,3))
-    plt.plot(range(1, len(lr_curve)+1), lr_curve, label='LR')
-    plt.xlabel('Epoch'); plt.ylabel('Learning Rate'); plt.title('OneCycle LR by epoch')
-    plt.grid(True, alpha=0.3); plt.tight_layout()
-    plt.savefig('onecycle_lr_curve.png', dpi=120)
-    print("Saved LR curve to onecycle_lr_curve.png")
-    # Try to display inside notebooks
-    try:
-        from IPython.display import Image, display
-        display(Image('onecycle_lr_curve.png'))
-    except Exception:
-        pass
-except Exception as ex:
-    print(f"! Не удалось построить/сохранить график LR: {ex}")
