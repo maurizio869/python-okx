@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-14 15:52
+# Last modified (MSK): 2025-08-14 16:11
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -125,7 +125,9 @@ else:
 
 model = LSTMClassifier(dropout=DROPOUT_P).to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), BASE_LR)
-lossf = nn.CrossEntropyLoss()
+pos_weight = neg_cnt / max(pos_cnt, 1)
+class_weights = torch.tensor([1.0, pos_weight], device=DEVICE)
+lossf = nn.CrossEntropyLoss(weight=class_weights)
 
 # LR Finder: 1 эпоха по train_loader, lr от BASE_LR/20 до BASE_LR*8
 print("LR Finder: старт…")
@@ -240,13 +242,10 @@ for e in range(1, EPOCHS+1):
             if n==0:
                 comp=-np.inf; sret=0.0; prec=0.0
             else:
-                prec = float(y_true_np[m].mean())  # precision among predicted positives
-                if prec < 0.6:
-                    comp=-np.inf; sret=0.0
-                else:
-                    r=ret_val_fixed[m]
-                    comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
-                    sret=float(np.sum(r))
+                # precision constraint removed
+                r=ret_val_fixed[m]
+                comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
+                sret=float(np.sum(r))
             if comp>best_comp:
                 best_comp=comp; best_thr=float(t); best_trades=n; best_sum=sret
         last_best_thr = best_thr
@@ -254,11 +253,7 @@ for e in range(1, EPOCHS+1):
         trades_best = best_trades
     else:
         m=(val_probs_np>=last_best_thr); trades_best=int(m.sum())
-        # ensure precision constraint for the cached threshold; if violated, set pnl to 0
-        if trades_best>0 and float(np.asarray(y_true_np[m]).mean()) >= 0.6:
-            pnl_best_sum = float(np.sum(ret_val_fixed[m]))
-        else:
-            pnl_best_sum = 0.0
+        pnl_best_sum = float(np.sum(ret_val_fixed[m])) if trades_best>0 else 0.0
 
     curr_lr = opt.param_groups[0]['lr']
     val_acc = (corr/tot_s) if tot_s>0 else 0.0
@@ -327,13 +322,9 @@ for t in thresholds:
     if n==0:
         comp=-np.inf; shp=0.0; sret=0.0
     else:
-        prec = float(y_true_all[m].mean())
-        if prec < 0.6:
-            comp=-np.inf; shp=0.0; sret=0.0
-        else:
-            r=ret_val[m]; comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
-            shp=float(np.mean(r)/(np.std(r)+1e-12)) if r.size>=2 else 0.0
-            sret=float(np.sum(r))
+        r=ret_val[m]; comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
+        shp=float(np.mean(r)/(np.std(r)+1e-12)) if r.size>=2 else 0.0
+        sret=float(np.sum(r))
     print(f"thr={t:.4f} trades={n} pnl={sret*100:.2f}% comp_ret={comp*100 if np.isfinite(comp) else float('nan'):.2f}% sharpe={shp:.2f}")
     if comp>best_comp: best_comp=comp; best_thr=float(t); best_trades=n
 print(f"Выбран порог по PnL (валидация): {best_thr:.4f}, comp_ret={best_comp*100 if np.isfinite(best_comp) else float('nan'):.2f}% trades={best_trades}")
