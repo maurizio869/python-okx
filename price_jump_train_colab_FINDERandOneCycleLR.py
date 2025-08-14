@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-14 14:33
+# Last modified (MSK): 2025-08-14 14:35
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -154,6 +154,7 @@ try:
         display(Image('onecycle_lr_curve.png'))
     except Exception:
         pass
+    plt.close()
 except Exception as ex:
     print(f"! Не удалось построить/сохранить дообучающий график LR: {ex}")
 
@@ -340,5 +341,6 @@ try:
         display(Image('training_curves.png'))
     except Exception:
         pass
+    plt.close()
 except Exception as ex:
     print(f"! Не удалось построить/сохранить пост-обучающие кривые: {ex}")
