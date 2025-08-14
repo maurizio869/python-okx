@@ -1,7 +1,7 @@
 # lstm_jump_dropout_p_find.py
-# Last modified (MSK): 2025-08-14 18:11
+# Last modified (MSK): 2025-08-14 19:39
 """Быстрый свип по dropout p, с кратким LR Finder и коротким обучением.
-Записывает выбранные 'dropout' и 'base_lr' в meta (MODEL_META_PATH), не стирая остальные поля.
+Записывает выбранные 'dropout' и 'base_lr' в hyper (MODEL_PATH.with_suffix('.hyper.json')).
 """
 from pathlib import Path
 import json, numpy as np, pandas as pd
@@ -21,7 +21,7 @@ BATCH_SIZE = 512
 BASE_LR_DEFAULT = 3e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-P_GRID = [float(f"{p:.3f}") for p in np.arange(0.18, 0.40 + 1e-12, 0.01)]
+P_GRID = [float(f"{p:.3f}") for p in np.arange(0.18, 0.40 + 1e-12, 0.01)]  # тонкий шаг 0.01 в диапазоне [0.18, 0.40]
 SHORT_EPOCHS = 12
 LR_FINDER_MIN_FACTOR = 1.0/20.0
 LR_FINDER_MAX_FACTOR = 8.0
