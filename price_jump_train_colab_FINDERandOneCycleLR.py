@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-16 12:26
+# Last modified (MSK): 2025-08-16 12:51
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -357,23 +357,25 @@ try:
     plt.figure(figsize=(8,5))
     x = np.arange(1, len(lr_curve)+1)
     # plot normalized curves
+    colors = {}
     for name, arr in curves.items():
         if arr.size == 0:
             continue
         arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + eps)
-        plt.plot(x, arr_norm, label=name)
+        line, = plt.plot(x, arr_norm, label=name)
+        colors[name] = line.get_color()
     # annotate max PR_AUC and max PnL%
     if len(pr_auc_curve) > 0:
         i_best_pr = int(np.nanargmax(pr_auc_curve))
         y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + eps)
-        plt.scatter([i_best_pr+1], [y_best_pr], color='#2ca02c', s=40)
+        plt.scatter([i_best_pr+1], [y_best_pr], color=colors.get('PR_AUC', '#2ca02c'), s=40)
         plt.annotate(f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f}\n(ep={i_best_pr+1})",
                      xy=(i_best_pr+1, y_best_pr), xytext=(5, 12), textcoords='offset points',
                      bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
     if len(pnl_curve_pct) > 0:
         i_best_pnl = int(np.nanargmax(pnl_curve_pct))
         y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + eps)
-        plt.scatter([i_best_pnl+1], [y_best_pnl], color='#d62728', s=40)
+        plt.scatter([i_best_pnl+1], [y_best_pnl], color=colors.get('PnL%', '#d62728'), s=40)
         plt.annotate(f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
                      xy=(i_best_pnl+1, y_best_pnl), xytext=(5, -28), textcoords='offset points',
                      bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
