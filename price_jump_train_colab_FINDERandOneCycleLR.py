@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-16 12:51
+# Last modified (MSK): 2025-08-16 13:17
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -324,18 +324,69 @@ ret_val = exit_closes/np.maximum(entry_opens,1e-12)-1.0
 thr_min,thr_max,thr_step=0.15,0.60,0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
 thresholds=np.arange(thr_min,thr_max+1e-12,thr_step)
+# collect metrics for plotting
+thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]; trades_list=[]
+def _safe_sharpe_arr(r: np.ndarray) -> float:
+    if r.size < 2: return 0.0
+    std = float(np.std(r))
+    return float(np.mean(r) / (std + 1e-12))
 best_comp=-np.inf; best_thr=float(thresholds[0]); best_trades=0
 for t in thresholds:
     m=(val_probs_all>=t); n=int(m.sum())
     if n==0:
         comp=-np.inf; shp=0.0; sret=0.0
     else:
-        r=ret_val[m]; comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
-        shp=float(np.mean(r)/(np.std(r)+1e-12)) if r.size>=2 else 0.0
+        r=ret_val[m]
+        comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
+        shp=_safe_sharpe_arr(r)
         sret=float(np.sum(r))
-    print(f"thr={t:.4f} trades={n} pnl={sret*100:.2f}% comp_ret={comp*100 if np.isfinite(comp) else float('nan'):.2f}% sharpe={shp:.2f}")
+    thr_list.append(float(t)); pnl_list.append(sret*100.0); comp_list.append(comp*100.0 if np.isfinite(comp) else np.nan); sharpe_list.append(shp); trades_list.append(n)
     if comp>best_comp: best_comp=comp; best_thr=float(t); best_trades=n
 print(f"Выбран порог по PnL (валидация): {best_thr:.4f}, comp_ret={best_comp*100 if np.isfinite(best_comp) else float('nan'):.2f}% trades={best_trades}")
+# plot metrics vs threshold with max comp_ret annotated
+try:
+    fig, ax1 = plt.subplots(figsize=(8,5))
+    ax2 = ax1.twinx()
+    thr_arr = np.asarray(thr_list)
+    pnl_arr = np.asarray(pnl_list)
+    comp_arr = np.asarray(comp_list)
+    shp_arr = np.asarray(sharpe_list)
+    l1, = ax1.plot(thr_arr, comp_arr, label='comp_ret %', color='#1f77b4')
+    l2, = ax1.plot(thr_arr, pnl_arr, label='pnl_sum %', color='#ff7f0e')
+    l3, = ax2.plot(thr_arr, shp_arr, label='sharpe', color='#2ca02c', alpha=0.8)
+    # annotate best comp_ret
+    if np.isfinite(best_comp):
+        idx = int(np.nanargmax(comp_arr))
+        ax1.axvline(thr_arr[idx], color=l1.get_color(), linestyle='--', alpha=0.6)
+        ax1.scatter([thr_arr[idx]],[comp_arr[idx]], color=l1.get_color(), s=35)
+        ax1.annotate(f"best comp={comp_arr[idx]:.2f}%\nthr={thr_arr[idx]:.4f}",
+                     xy=(thr_arr[idx], comp_arr[idx]), xytext=(10, 12), textcoords='offset points',
+                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.7))
+    ax1.set_xlabel('Threshold')
+    ax1.set_ylabel('% metrics (comp_ret, pnl_sum)')
+    ax2.set_ylabel('Sharpe')
+    lines = [l1,l2,l3]
+    labels = [ln.get_label() for ln in lines]
+    ax1.legend(lines, labels, loc='best')
+    ax1.grid(True, alpha=0.3)
+    fig.tight_layout()
+    # filename with MSK datetime
+    from datetime import datetime
+    import pytz
+    msk = pytz.timezone('Europe/Moscow')
+    ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
+    out_name = f'threshold_sweep_{ts}.png'
+    fig.savefig(out_name, dpi=130)
+    print(f"Saved threshold sweep plot to {Path(out_name).resolve()}")
+    try:
+        from IPython.display import Image, display
+        display(Image(out_name))
+    except Exception:
+        pass
+    plt.close(fig)
+except Exception as ex:
+    print(f"! Не удалось построить график перебора порога: {ex}")
+# finalize meta
 final={"model_state":model.state_dict(),"scaler":ds.scaler,
         "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW,"threshold":best_thr}}
 torch.save(final, MODEL_PATH)
