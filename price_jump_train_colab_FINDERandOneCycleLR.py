@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-15 21:58
+# Last modified (MSK): 2025-08-16 11:47
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -354,20 +354,53 @@ try:
         'ValAcc': np.asarray(val_acc_curve, dtype=np.float64),
     }
     eps = 1e-12
-    plt.figure(figsize=(7,4))
+    plt.figure(figsize=(8,5))
+    x = np.arange(1, len(lr_curve)+1)
+    # plot normalized curves
     for name, arr in curves.items():
         if arr.size == 0:
             continue
         arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + eps)
-        plt.plot(range(1, len(arr_norm)+1), arr_norm, label=name)
+        plt.plot(x, arr_norm, label=name)
+    # annotate max PR_AUC and max PnL%
+    if len(pr_auc_curve) > 0:
+        i_best_pr = int(np.nanargmax(pr_auc_curve))
+        y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + eps)
+        plt.scatter([i_best_pr+1], [y_best_pr], color='#2ca02c', s=40)
+        plt.annotate(f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f}\n(ep={i_best_pr+1})",
+                     xy=(i_best_pr+1, y_best_pr), xytext=(5, 12), textcoords='offset points',
+                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
+    if len(pnl_curve_pct) > 0:
+        i_best_pnl = int(np.nanargmax(pnl_curve_pct))
+        y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + eps)
+        plt.scatter([i_best_pnl+1], [y_best_pnl], color='#d62728', s=40)
+        plt.annotate(f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
+                     xy=(i_best_pnl+1, y_best_pnl), xytext=(5, -28), textcoords='offset points',
+                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
+    # textbox with top constants in bottom-right
+    const_text = (
+        f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
+        f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
+        f"pct_start={ONECYCLE_PCT_START}\ndiv_factor={ONECYCLE_DIV_FACTOR}\nfinal_div={ONECYCLE_FINAL_DIV_FACTOR}\n"
+        f"WD={WEIGHT_DECAY}\nDROPOUT={DROPOUT_P:.3f}"
+    )
+    plt.gca().text(0.98, 0.02, const_text, transform=plt.gca().transAxes,
+                   ha='right', va='bottom', fontsize=8,
+                   bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]')
     plt.title('Training curves (normalized): LR, PR_AUC, PnL%@thr, ValAcc')
     plt.grid(True, alpha=0.3); plt.legend(); plt.tight_layout()
-    plt.savefig('training_curves.png', dpi=120)
-    print("Saved post-training curves to training_curves.png")
+    # filename with MSK datetime
+    from datetime import datetime
+    import pytz
+    msk = pytz.timezone('Europe/Moscow')
+    ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
+    out_name = f'training_curves_{ts}.png'
+    plt.savefig(out_name, dpi=120)
+    print(f"Saved post-training curves to {Path(out_name).resolve()}")
     try:
         from IPython.display import Image, display
-        display(Image('training_curves.png'))
+        display(Image(out_name))
     except Exception:
         pass
     plt.close()
