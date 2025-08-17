@@ -1,0 +1,14 @@
+!.cursorignore
+# Ignore everything by default
+*
+# Allow only our working scripts in diff/search
+!lstm_jump_dropout_p_find.py
+!price_jump_eval_colab_NEW_LAYERS.py
+!price_jump_eval_colab.py
+!price_jump_max_lr_finder_plot.py
+!price_jump_train_colab_FINDERandOneCycleLR.py
+!price_jump_train_colab_FOCAL_LOSS.py
+!price_jump_train_colab_NEW_LAYERS.py
+!price_jump_train_colab.py
+!price_jump_visualize.py
+!setup.py
