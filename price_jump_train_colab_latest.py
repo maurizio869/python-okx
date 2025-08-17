@@ -4,7 +4,7 @@
 Сохраняет модель и StandardScaler в lstm_jump.pt
 """
 from pathlib import Path
-import json, numpy as np, pandas as pd, torch, torch.nn as nn
+import os, json, numpy as np, pandas as pd, torch, torch.nn as nn
 from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset, DataLoader, random_split
 
@@ -63,10 +63,12 @@ class LSTMClassifier(nn.Module):
         return self.fc(h[-1])
 
 # ─── параметры обучения ───────────────────────────────────────────
-TRAIN_JSON = Path("candles_10d.json")
-MODEL_PATH = Path("lstm_jump.pt")
-VAL_SPLIT, EPOCHS = 0.2, 30
-BATCH_SIZE, LR = 512, 1e-3
+TRAIN_JSON = Path(os.getenv("TRAIN_JSON", "candles_10d.json"))
+MODEL_PATH = Path(os.getenv("MODEL_PATH", "lstm_jump.pt"))
+VAL_SPLIT = float(os.getenv("VAL_SPLIT", "0.2"))
+EPOCHS = int(os.getenv("EPOCHS", "30"))
+BATCH_SIZE = int(os.getenv("BATCH_SIZE", "512"))
+LR = float(os.getenv("LR", "1e-3"))
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 print("Загружаем", TRAIN_JSON)
