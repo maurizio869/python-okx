@@ -1,12 +1,12 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-17 11:32
+# Last modified (MSK): 2025-08-17 11:36
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
 Остальное: как в базовом тренинге (v-канал, SEQ_LEN=30, ранний стоп по PR AUC, PnL@best, подбор порога по PnL).
 """
 from pathlib import Path
-import json, math
+import json, math, random
 import numpy as np
 import pandas as pd
 import torch, torch.nn as nn
@@ -15,6 +15,19 @@ from matplotlib.ticker import FuncFormatter
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
+
+# Reproducibility
+SEED = 42
+random.seed(SEED)
+np.random.seed(SEED)
+torch.manual_seed(SEED)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(SEED)
+try:
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+except Exception:
+    pass
 
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035
 TRAIN_JSON = Path("candles_10d.json")
@@ -92,7 +105,9 @@ print(f"Меток 1: {pos_cnt}")
 print(f"Меток 0: {neg_cnt}")
 
 val = int(len(ds)*VAL_SPLIT)
-train_ds, val_ds = random_split(ds,[len(ds)-val,val])
+# fixed split
+gen = torch.Generator().manual_seed(SEED)
+train_ds, val_ds = random_split(ds,[len(ds)-val,val], generator=gen)
 train_loader = DataLoader(train_ds,BATCH_SIZE,shuffle=True)
 val_loader   = DataLoader(val_ds,BATCH_SIZE)
 
@@ -140,13 +155,15 @@ lossf = nn.CrossEntropyLoss(weight=class_weights)
 # LR Finder: 1 эпоха по train_loader, lr от BASE_LR/20 до BASE_LR*8
 print("LR Finder: старт…")
 min_lr, max_lr = BASE_LR*LR_FINDER_MIN_FACTOR, BASE_LR*LR_FINDER_MAX_FACTOR
-num_steps = max(1, len(train_loader))
+# LR Finder uses a deterministic, no-shuffle loader and disables dropout
+finder_loader = DataLoader(train_ds, BATCH_SIZE, shuffle=False)
+num_steps = max(1, len(finder_loader))
 lr_mult = (max_lr/min_lr) ** (1/num_steps)
 print(f"LR Finder params: BASE_LR={BASE_LR:.2e}, min_lr={min_lr:.2e}, max_lr={max_lr:.2e}, num_steps={num_steps}, lr_mult≈{lr_mult:.6f}")
 for pg in opt.param_groups: pg['lr'] = min_lr
 best_loss = float('inf'); best_lr = BASE_LR
-model.train(); step_id=0
-for xb, yb in train_loader:
+model.eval(); step_id=0  # disable dropout for LR Finder
+for xb, yb in finder_loader:
     xb, yb = xb.to(DEVICE), yb.to(DEVICE)
     opt.zero_grad(); logits = model(xb); loss = lossf(logits, yb)
     loss.backward(); opt.step()
@@ -158,6 +175,9 @@ print(f"LR Finder: best_lr≈{best_lr:.2e}, best_loss={best_loss:.4f}")
 # fallback if unstable
 best_lr = 1.94e-03
 print("lr finder is unstable, best_lr=", best_lr)
+
+# switch back to train mode for main loop
+model.train()
 
 # OneCycleLR на весь ран: max_lr = BEST_LR_MULTIPLIER×best_lr (clipped)
 max_lr = float(np.clip(BEST_LR_MULTIPLIER*best_lr, BASE_LR*CLIP_MIN_FACTOR, BASE_LR*CLIP_MAX_FACTOR))
