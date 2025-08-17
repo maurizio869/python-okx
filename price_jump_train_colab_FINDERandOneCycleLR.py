@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-17 07:39
+# Last modified (MSK): 2025-08-17 11:32
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -28,16 +28,16 @@ BATCH_SIZE, BASE_LR = 512, 3e-4
 LR_FINDER_MIN_FACTOR = 1.0/20.0  # min_lr = BASE_LR * LR_FINDER_MIN_FACTOR
 LR_FINDER_MAX_FACTOR = 8.0       # max_lr = BASE_LR * LR_FINDER_MAX_FACTOR
 # How to pick OneCycle max_lr from best_lr and clip range around BASE_LR
-BEST_LR_MULTIPLIER = 1.0         # max_lr ~ BEST_LR_MULTIPLIER * best_lr
+BEST_LR_MULTIPLIER = 0.9         # max_lr ~ BEST_LR_MULTIPLIER * best_lr
 CLIP_MIN_FACTOR = 0.8            # clip lower bound = BASE_LR * CLIP_MIN_FACTOR
 CLIP_MAX_FACTOR = 8.0            # clip upper bound = BASE_LR * CLIP_MAX_FACTOR
 # OneCycleLR shape parameters
 ONECYCLE_PCT_START = 0.3
-ONECYCLE_DIV_FACTOR = 1000.0
+ONECYCLE_DIV_FACTOR = 50.0
 ONECYCLE_FINAL_DIV_FACTOR = 1e3
-WEIGHT_DECAY = 4e-5
+WEIGHT_DECAY = 3e-5
 # Default dropout if no hyper/meta provided
-DEFAULT_DROPOUT = 0.22
+DEFAULT_DROPOUT = 0.24
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 class CandleDataset(Dataset):
@@ -155,6 +155,9 @@ for xb, yb in train_loader:
     for pg in opt.param_groups: pg['lr'] *= lr_mult
     step_id += 1
 print(f"LR Finder: best_lr≈{best_lr:.2e}, best_loss={best_loss:.4f}")
+# fallback if unstable
+best_lr = 1.94e-03
+print("lr finder is unstable, best_lr=", best_lr)
 
 # OneCycleLR на весь ран: max_lr = BEST_LR_MULTIPLIER×best_lr (clipped)
 max_lr = float(np.clip(BEST_LR_MULTIPLIER*best_lr, BASE_LR*CLIP_MIN_FACTOR, BASE_LR*CLIP_MAX_FACTOR))
