@@ -1,5 +1,5 @@
 # price_jump_max_lr_finder_plot.py
-# Last modified (MSK): 2025-08-17 07:39
+# Last modified (MSK): 2025-08-17 20:34
 """LR Finder с графиком и авто-выбором max_lr.
 - Строит loss vs lr (и EMA-сглаженную кривую)
 - Отмечает lr_best (минимум EMA), lr_break (точка «обрыва») и выбранный max_lr
