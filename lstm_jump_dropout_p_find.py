@@ -1,5 +1,5 @@
 # lstm_jump_dropout_p_find.py
-# Last modified (MSK): 2025-08-17 20:34
+# Last modified (MSK): 2025-08-17 21:12
 """Быстрый свип по dropout p, с кратким LR Finder и коротким обучением.
 Записывает выбранные 'dropout' и 'base_lr' в hyper (MODEL_PATH.with_suffix('.hyper.json')).
 """

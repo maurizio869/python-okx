@@ -1,5 +1,5 @@
 # price_jump_visualize.py
-# Last modified (MSK): 2025-08-17 20:39
+# Last modified (MSK): 2025-08-17 21:12
 """Загружает файл viz_data.npz, сформированный скриптом price_jump_eval_colab.py,
 и строит свечной график с отметками прогнозируемых скачков.
 """
