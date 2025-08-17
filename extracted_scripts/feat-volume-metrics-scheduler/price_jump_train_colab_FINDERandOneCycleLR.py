@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-17 11:36
+# Last modified (MSK): 2025-08-17 13:11
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -37,6 +37,7 @@ MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
 VAL_SPLIT, EPOCHS = 0.2, 100
 BATCH_SIZE, BASE_LR = 512, 3e-4
+best_lr_default = 1.94e-03
 # Tunable LR Finder params
 LR_FINDER_MIN_FACTOR = 1.0/20.0  # min_lr = BASE_LR * LR_FINDER_MIN_FACTOR
 LR_FINDER_MAX_FACTOR = 8.0       # max_lr = BASE_LR * LR_FINDER_MAX_FACTOR
@@ -173,7 +174,7 @@ for xb, yb in finder_loader:
     step_id += 1
 print(f"LR Finder: best_lr≈{best_lr:.2e}, best_loss={best_loss:.4f}")
 # fallback if unstable
-best_lr = 1.94e-03
+best_lr = best_lr_default
 print("lr finder is unstable, best_lr=", best_lr)
 
 # switch back to train mode for main loop
