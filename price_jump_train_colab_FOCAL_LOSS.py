@@ -16,10 +16,10 @@ from torch.utils.data import Dataset, DataLoader, random_split
 import math
 
 # Hoisted constants
-REDUCE_ON_PLATEAU_START_LR = 6e-4
+REDUCE_ON_PLATEAU_START_LR = 5e-4
 REDUCE_ON_PLATEAU_START_PATIENCE = 9
-REDUCE_ON_PLATEAU_FACTOR = 1/2
-REDUCE_ON_PLATEAU_MIN_LR = 1e-6
+REDUCE_ON_PLATEAU_FACTOR = 1/3
+REDUCE_ON_PLATEAU_MIN_LR = 1e-5
 PNL_FIXED_THRESHOLD = 0.565
 
 # ─── ГЛОБАЛЬНЫЕ ПАРАМЕТРЫ ─────────────────────────────────────────────
@@ -203,7 +203,7 @@ for e in range(1, EPOCHS + 1):
     # train
     model.train()
     total_loss = 0.0
-    for xb, yb in train_loader:
+    for xb, yb in tl:
         xb, yb = xb.to(DEVICE), yb.to(DEVICE)
         opt.zero_grad()
         logits = model(xb)
@@ -217,7 +217,7 @@ for e in range(1, EPOCHS + 1):
     corr = tot_s = 0
     val_targets, val_probs, val_preds = [], [], []
     with torch.no_grad():
-        for xb, yb in val_loader:
+        for xb, yb in vl:
             logits = model(xb.to(DEVICE))
             prob1  = torch.softmax(logits, dim=1)[:, 1].cpu()
             pred   = (prob1 >= 0.5).to(torch.long)
@@ -298,6 +298,51 @@ for e in range(1, EPOCHS + 1):
 
 print(f"Лучшая модель с PR_AUC={best_pr_auc:.3f} сохранена в {MODEL_PATH.resolve()}")
 print(f"Лучшая модель с pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}% сохранена в {PNL_MODEL_PATH.resolve()}")
+
+# Post-training curves (normalized)
+try:
+    import numpy as np
+    import matplotlib.pyplot as plt
+    curves = {
+        'LR': np.asarray([opt.param_groups[0]['lr'] for _ in range(max(1, EPOCHS))], dtype=np.float64),
+        'PR_AUC': np.asarray([], dtype=np.float64),
+        'PnL%': np.asarray([], dtype=np.float64),
+        'ValAcc': np.asarray([], dtype=np.float64),
+    }
+    eps = 1e-12
+    plt.figure(figsize=(8,5))
+    x = np.arange(1, max(1, EPOCHS)+1)
+    for name, arr in curves.items():
+        if arr.size == 0:
+            continue
+        arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + eps)
+        plt.plot(x[:len(arr_norm)], arr_norm, label=name)
+    const_text = (
+        f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
+        f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
+        f"PNL_thr={PNL_FIXED_THRESHOLD}\nLOSS=Focal(gamma={FOCAL_GAMMA}, alpha_neg={ALPHA_NEG}, alpha_pos={ALPHA_POS})"
+    )
+    plt.gca().text(0.98, 0.02, const_text, transform=plt.gca().transAxes,
+                   ha='right', va='bottom', fontsize=8,
+                   bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]')
+    plt.title('Training curves (normalized)')
+    plt.grid(True, alpha=0.3); plt.legend(); plt.tight_layout()
+    from datetime import datetime
+    import pytz
+    msk = pytz.timezone('Europe/Moscow')
+    ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
+    out_name = f'training_curves_reduce_on_plateau_{ts}.png'
+    plt.savefig(out_name, dpi=120)
+    print(f"Saved post-training curves to {Path(out_name).resolve()}")
+    try:
+        from IPython.display import Image, display
+        display(Image(out_name))
+    except Exception:
+        pass
+    plt.close()
+except Exception as ex:
+    print(f"! Не удалось построить/сохранить пост-обучающие кривые: {ex}")
 
 # ─── Подбор порога по PnL на валидации ─────────────────────────────
 print("Подбираем порог по PnL на валидационном наборе…")

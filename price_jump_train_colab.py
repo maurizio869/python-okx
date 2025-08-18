@@ -15,10 +15,10 @@ import matplotlib.pyplot as plt
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035  # 30-мин история, окно 5 мин
 
 # Scheduler and PnL constants (hoisted)
-REDUCE_ON_PLATEAU_START_LR = 6e-4
+REDUCE_ON_PLATEAU_START_LR = 5e-4
 REDUCE_ON_PLATEAU_START_PATIENCE = 9
-REDUCE_ON_PLATEAU_FACTOR = 1/2
-REDUCE_ON_PLATEAU_MIN_LR = 1e-6
+REDUCE_ON_PLATEAU_FACTOR = 1/3
+REDUCE_ON_PLATEAU_MIN_LR = 1e-5
 PNL_FIXED_THRESHOLD = 0.565
 
 def load_dataframe(path: Path) -> pd.DataFrame:
@@ -253,6 +253,52 @@ for e in range(1, EPOCHS+1):
 
 print(f"Лучшая модель с PR_AUC={best_pr_auc:.3f} сохранена в {MODEL_PATH.resolve()}")
 print(f"Лучшая модель с pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}% сохранена в {PNL_MODEL_PATH.resolve()}")
+
+# Post-training curves (normalized): LR, PR_AUC, PnL%@thr, ValAcc
+try:
+    curves = {
+        'LR': np.asarray([opt.param_groups[0]['lr'] for _ in range(max(1, EPOCHS))], dtype=np.float64),
+        'PR_AUC': np.asarray([], dtype=np.float64),
+        'PnL%': np.asarray([], dtype=np.float64),
+        'ValAcc': np.asarray([], dtype=np.float64),
+    }
+    # Note: In this simple variant we do not retain per-epoch histories; extend easily by collecting lists during training
+    eps = 1e-12
+    plt.figure(figsize=(8,5))
+    x = np.arange(1, max(1, EPOCHS)+1)
+    colors = {}
+    for name, arr in curves.items():
+        if arr.size == 0:
+            continue
+        arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + eps)
+        line, = plt.plot(x[:len(arr_norm)], arr_norm, label=name)
+        colors[name] = line.get_color()
+    const_text = (
+        f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
+        f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
+        f"PNL_thr={PNL_FIXED_THRESHOLD}"
+    )
+    plt.gca().text(0.98, 0.02, const_text, transform=plt.gca().transAxes,
+                   ha='right', va='bottom', fontsize=8,
+                   bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]')
+    plt.title('Training curves (normalized)')
+    plt.grid(True, alpha=0.3); plt.legend(); plt.tight_layout()
+    from datetime import datetime
+    import pytz
+    msk = pytz.timezone('Europe/Moscow')
+    ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
+    out_name = f'training_curves_reduce_on_plateau_{ts}.png'
+    plt.savefig(out_name, dpi=120)
+    print(f"Saved post-training curves to {Path(out_name).resolve()}")
+    try:
+        from IPython.display import Image, display
+        display(Image(out_name))
+    except Exception:
+        pass
+    plt.close()
+except Exception as ex:
+    print(f"! Не удалось построить/сохранить пост-обучающие кривые: {ex}")
 
 # ─── Подбор порога по PnL на валидации ─────────────────────────────
 print("Подбираем порог по PnL на валидационном наборе…")
