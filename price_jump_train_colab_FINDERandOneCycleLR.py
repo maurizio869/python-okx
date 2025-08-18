@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-17 21:12
+# Last modified (MSK): 2025-08-18 13:00
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -35,9 +35,9 @@ MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
-VAL_SPLIT, EPOCHS = 0.2, 100
+VAL_SPLIT, EPOCHS = 0.2, 130
 BATCH_SIZE, BASE_LR = 512, 3e-4
-best_lr_default = 1.94e-03
+best_lr_default = 3.0e-03
 # Tunable LR Finder params
 LR_FINDER_MIN_FACTOR = 1.0/20.0  # min_lr = BASE_LR * LR_FINDER_MIN_FACTOR
 LR_FINDER_MAX_FACTOR = 8.0       # max_lr = BASE_LR * LR_FINDER_MAX_FACTOR
@@ -46,13 +46,14 @@ BEST_LR_MULTIPLIER = 0.9         # max_lr ~ BEST_LR_MULTIPLIER * best_lr
 CLIP_MIN_FACTOR = 0.8            # clip lower bound = BASE_LR * CLIP_MIN_FACTOR
 CLIP_MAX_FACTOR = 8.0            # clip upper bound = BASE_LR * CLIP_MAX_FACTOR
 # OneCycleLR shape parameters
-ONECYCLE_PCT_START = 0.3
-ONECYCLE_DIV_FACTOR = 50.0
-ONECYCLE_FINAL_DIV_FACTOR = 1e3
+ONECYCLE_PCT_START = 0.38
+ONECYCLE_DIV_FACTOR = 30.0
+ONECYCLE_FINAL_DIV_FACTOR = 30
 WEIGHT_DECAY = 3e-5
 # Default dropout if no hyper/meta provided
 DEFAULT_DROPOUT = 0.24
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+EARLY_STOP_EPOCHS = 25
 
 class CandleDataset(Dataset):
     def __init__(self, df: pd.DataFrame):
@@ -321,7 +322,7 @@ for e in range(1, EPOCHS+1):
         print(f"✓ Сохранена новая лучшая модель (PNL@{last_best_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
     else:
         epochs_no_improve += 1
-        if epochs_no_improve >= 15:
+        if epochs_no_improve >= EARLY_STOP_EPOCHS:
             print(f"⏹ Ранний стоп: PR AUC не улучшается {epochs_no_improve} эпох подряд"); break
 
 print(f"Лучшая модель с PR_AUC={best_pr_auc:.3f} сохранена в {MODEL_PATH.resolve()}")
