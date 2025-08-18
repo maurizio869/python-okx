@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-17 21:12
+# Last modified (MSK): 2025-08-18 13:00
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
 Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -13,6 +13,13 @@ import math
 import matplotlib.pyplot as plt
 
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035  # 30-мин история, окно 5 мин
+
+# Scheduler and PnL constants (hoisted)
+REDUCE_ON_PLATEAU_START_LR = 6e-4
+REDUCE_ON_PLATEAU_START_PATIENCE = 9
+REDUCE_ON_PLATEAU_FACTOR = 1/2
+REDUCE_ON_PLATEAU_MIN_LR = 1e-6
+PNL_FIXED_THRESHOLD = 0.565
 
 def load_dataframe(path: Path) -> pd.DataFrame:
     with open(path) as f: raw = json.load(f)
@@ -84,7 +91,7 @@ PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
 VAL_SPLIT, EPOCHS = 0.2, 250
-BATCH_SIZE, LR = 512, 6e-4
+BATCH_SIZE, LR = 512, REDUCE_ON_PLATEAU_START_LR
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 print("Загружаем", TRAIN_JSON)
@@ -152,9 +159,9 @@ else:
 
 model = LSTMClassifier(dropout=DROPOUT_P).to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
-current_patience = 9
+current_patience = REDUCE_ON_PLATEAU_START_PATIENCE
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-    opt, mode='max', patience=current_patience, factor=1/2, min_lr=1e-6
+    opt, mode='max', patience=current_patience, factor=REDUCE_ON_PLATEAU_FACTOR, min_lr=REDUCE_ON_PLATEAU_MIN_LR
 )
 lossf = nn.CrossEntropyLoss(weight=class_weights)
 
@@ -199,7 +206,7 @@ for e in range(1, EPOCHS+1):
     
     # PnL with fixed threshold 0.565 on validation
     val_probs_np = np.asarray(val_probs, dtype=np.float32)
-    mask_fixed = val_probs_np >= 0.565
+    mask_fixed = val_probs_np >= PNL_FIXED_THRESHOLD
     trades_fixed = int(mask_fixed.sum())
     pnl_fixed = float(np.sum(ret_per_trade_val_fixed[mask_fixed])) if trades_fixed > 0 else 0.0
     
@@ -210,7 +217,7 @@ for e in range(1, EPOCHS+1):
         curr_lr = opt.param_groups[0]['lr']
     print(f'Epoch {e}/{EPOCHS} lr {curr_lr:.2e} loss {tot/len(train_ds):.4f} '
           f'val_acc {corr/tot_s:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} nPR_AUC {npr_auc:.3f} '
-          f'PNL@0.565 {pnl_fixed*100:.2f}% trades={trades_fixed}')
+          f'PNL@{PNL_FIXED_THRESHOLD} {pnl_fixed*100:.2f}% trades={trades_fixed}')
 
     # step scheduler and dynamically expand patience on LR reduction
     old_lr = opt.param_groups[0]['lr']

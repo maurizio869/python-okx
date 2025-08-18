@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-17 21:12
+# Last modified (MSK): 2025-08-18 13:00
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -14,6 +14,13 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
 import math
+
+# Hoisted constants
+REDUCE_ON_PLATEAU_START_LR = 6e-4
+REDUCE_ON_PLATEAU_START_PATIENCE = 9
+REDUCE_ON_PLATEAU_FACTOR = 1/2
+REDUCE_ON_PLATEAU_MIN_LR = 1e-6
+PNL_FIXED_THRESHOLD = 0.565
 
 # ─── ГЛОБАЛЬНЫЕ ПАРАМЕТРЫ ─────────────────────────────────────────────
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035  # 30-мин история, окно 5 мин
@@ -181,9 +188,9 @@ ret_per_trade_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 # модель/опт/шедулер/лосс
 model = LSTMClassifier(dropout=DROPOUT_P).to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
-current_patience = 9
+current_patience = REDUCE_ON_PLATEAU_START_PATIENCE
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-	opt, mode='max', patience=current_patience, factor=1/2, min_lr=1e-6
+	opt, mode='max', patience=current_patience, factor=REDUCE_ON_PLATEAU_FACTOR, min_lr=REDUCE_ON_PLATEAU_MIN_LR
 )
 lossf = FocalLoss(alpha=(ALPHA_NEG, ALPHA_POS), gamma=FOCAL_GAMMA)
 
@@ -234,7 +241,7 @@ for e in range(1, EPOCHS + 1):
 
     # PnL with fixed threshold 0.565 on validation
     val_probs_np = np.asarray(val_probs, dtype=np.float32)
-    mask_fixed = val_probs_np >= 0.565
+    mask_fixed = val_probs_np >= PNL_FIXED_THRESHOLD
     trades_fixed = int(mask_fixed.sum())
     pnl_fixed = float(np.sum(ret_per_trade_val_fixed[mask_fixed])) if trades_fixed > 0 else 0.0
 
