@@ -198,6 +198,11 @@ best_pr_auc = -1.0
 best_pnl_sum = -float('inf')
 best_pnl_thr = 0.565
 epochs_no_improve = 0
+# Collect per-epoch curves for post-training plot
+lr_curve = []
+pr_auc_curve = []
+pnl_curve_pct = []
+val_acc_curve = []
 
 for e in range(1, EPOCHS + 1):
     # train
@@ -251,9 +256,10 @@ for e in range(1, EPOCHS + 1):
     except Exception:
         curr_lr = opt.param_groups[0]['lr']
 
+    val_acc = (corr/tot_s) if tot_s > 0 else 0.0
     print(
         f"Epoch {e}/{EPOCHS} lr {curr_lr:.2e} "
-        f"loss {total_loss/len(train_ds):.4f} val_acc {corr/tot_s:.3f} "
+        f"loss {total_loss/len(train_ds):.4f} val_acc {val_acc:.3f} "
         f"F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} nPR_AUC {npr_auc:.3f} "
         f"PNL@0.565 {pnl_fixed*100:.2f}% trades={trades_fixed}"
     )
@@ -266,6 +272,12 @@ for e in range(1, EPOCHS + 1):
         current_patience = int(math.ceil(current_patience * 1.5))
         scheduler.patience = current_patience
         print(f"LR reduced to {new_lr:.2e}. Next patience set to {current_patience} epochs.")
+
+    # collect curves (use curr_lr of this epoch)
+    lr_curve.append(float(curr_lr))
+    pr_auc_curve.append(float(pr_auc))
+    pnl_curve_pct.append(float(pnl_fixed*100.0))
+    val_acc_curve.append(float(val_acc))
 
     # best-save by PR AUC
     if pr_auc > best_pr_auc + 1e-6:
@@ -304,19 +316,36 @@ try:
     import numpy as np
     import matplotlib.pyplot as plt
     curves = {
-        'LR': np.asarray([opt.param_groups[0]['lr'] for _ in range(max(1, EPOCHS))], dtype=np.float64),
-        'PR_AUC': np.asarray([], dtype=np.float64),
-        'PnL%': np.asarray([], dtype=np.float64),
-        'ValAcc': np.asarray([], dtype=np.float64),
+        'LR': np.asarray(lr_curve, dtype=np.float64),
+        'PR_AUC': np.asarray(pr_auc_curve, dtype=np.float64),
+        'PnL%': np.asarray(pnl_curve_pct, dtype=np.float64),
+        'ValAcc': np.asarray(val_acc_curve, dtype=np.float64),
     }
     eps = 1e-12
     plt.figure(figsize=(8,5))
-    x = np.arange(1, max(1, EPOCHS)+1)
+    x = np.arange(1, len(lr_curve)+1)
+    colors = {}
     for name, arr in curves.items():
         if arr.size == 0:
             continue
         arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + eps)
-        plt.plot(x[:len(arr_norm)], arr_norm, label=name)
+        line, = plt.plot(x[:len(arr_norm)], arr_norm, label=name)
+        colors[name] = line.get_color()
+    # annotate max PR_AUC and max PnL%
+    if len(pr_auc_curve) > 0:
+        i_best_pr = int(np.nanargmax(pr_auc_curve))
+        y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + eps)
+        plt.scatter([i_best_pr+1], [y_best_pr], color=colors.get('PR_AUC', '#2ca02c'), s=40)
+        plt.annotate(f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f}\n(ep={i_best_pr+1})",
+                     xy=(i_best_pr+1, y_best_pr), xytext=(5, 12), textcoords='offset points',
+                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
+    if len(pnl_curve_pct) > 0:
+        i_best_pnl = int(np.nanargmax(pnl_curve_pct))
+        y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + eps)
+        plt.scatter([i_best_pnl+1], [y_best_pnl], color=colors.get('PnL%', '#d62728'), s=40)
+        plt.annotate(f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
+                     xy=(i_best_pnl+1, y_best_pnl), xytext=(5, -28), textcoords='offset points',
+                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
