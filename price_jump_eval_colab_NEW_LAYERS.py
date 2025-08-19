@@ -1,5 +1,5 @@
 # price_jump_eval_colab_NEW_LAYERS.py
-# Last modified (MSK): 2025-08-17 21:12
+# Last modified (MSK): 2025-08-19 15:05
 """Инференс модели с расширенными признаками (upper_ratio, lower_ratio, body_sign).
 Читает meta (seq_len, pred_window, threshold), считает признаки из OHLCV и выводит PnL.
 """
