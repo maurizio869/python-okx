@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-20 08:11
+# Last modified (MSK): 2025-08-20 07:59
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -15,11 +15,6 @@ from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
 import math
 
-# Core task/window
-SEQ_LEN = 30
-PRED_WINDOW = 5
-JUMP_THRESHOLD = 0.0035
-
 # Hoisted constants
 REDUCE_ON_PLATEAU_START_LR = 5e-4
 REDUCE_ON_PLATEAU_START_PATIENCE = 9
@@ -28,35 +23,19 @@ REDUCE_ON_PLATEAU_MIN_LR = 1e-5
 PNL_FIXED_THRESHOLD = 0.565
 EARLY_STOP_EPOCHS = 25
 
-# Training setup
-VAL_SPLIT = 0.2
-EPOCHS = 250
-BATCH_SIZE = 512
-BASE_LR_DEFAULT = 6e-4
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+# ─── ГЛОБАЛЬНЫЕ ПАРАМЕТРЫ ─────────────────────────────────────────────
+SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035  # 30-мин история, окно 5 мин
 
-# Model architecture
-HIDDEN_SIZE = 64
-NUM_LAYERS = 2
-DROPOUT_DEFAULT = 0.30
-
-# Focal Loss parameters (tunable)
-ALPHA_NEG = 0.25
-ALPHA_POS = 0.75
-FOCAL_GAMMA = 2.0
-
-# Data normalization / epsilons
+# Model/training
+LSTM_HIDDEN = 64
+LSTM_LAYERS = 2
+DEFAULT_DROPOUT = 0.3
 REF_VOL_EPS = 1e-8
-NPR_EPS = 1e-12
-PLOT_NORM_EPS = 1e-12
-LR_CHANGE_EPS = 1e-12
-BLACK_SWAN_LIMIT = -0.999999
+MIN_DENOM_EPS = 1e-12
 
-# Threshold sweep defaults
-THR_SWEEP_MIN = 0.43
-THR_SWEEP_MAX = 0.70
-THR_SWEEP_STEP = 0.0025
-
+# Focal Loss параметры (подбираются по валидации)
+ALPHA_NEG, ALPHA_POS = 0.25, 0.75
+FOCAL_GAMMA = 2.0
 
 # ─── ДАННЫЕ ───────────────────────────────────────────────────────────
 def load_dataframe(path: Path) -> pd.DataFrame:
@@ -107,7 +86,7 @@ class CandleDataset(Dataset):
 
 # ─── МОДЕЛЬ ────────────────────────────────────────────────────────────
 class LSTMClassifier(nn.Module):
-    def __init__(self, nfeat: int = 5, hidden: int = HIDDEN_SIZE, layers: int = NUM_LAYERS, dropout: float = DROPOUT_DEFAULT):
+    def __init__(self, nfeat: int = 5, hidden: int = LSTM_HIDDEN, layers: int = LSTM_LAYERS, dropout: float = DEFAULT_DROPOUT):
         super().__init__()
         self.lstm = nn.LSTM(
             input_size=nfeat,
@@ -151,6 +130,9 @@ MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
+VAL_SPLIT, EPOCHS = 0.2, 250
+BATCH_SIZE, LR = 512, 6e-4
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 print("Загружаем", TRAIN_JSON)
 df = load_dataframe(TRAIN_JSON)
@@ -170,8 +152,7 @@ tl = DataLoader(train_ds,BATCH_SIZE,shuffle=True)
 vl = DataLoader(val_ds,BATCH_SIZE)
 
 # Optional overrides from meta
-DROPOUT_P = DROPOUT_DEFAULT
-LR = BASE_LR_DEFAULT
+DROPOUT_P = DEFAULT_DROPOUT
 _got_dropout = False
 _got_base_lr = False
 _src_dropout = "default"
@@ -214,22 +195,10 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
 )
 lossf = FocalLoss(alpha=(ALPHA_NEG, ALPHA_POS), gamma=FOCAL_GAMMA)
 
-# Precompute per-trade returns on validation subset for fixed-threshold PnL (@PNL_FIXED_THRESHOLD)
-val_indices = np.asarray(val_ds.indices, dtype=np.int64)
-entry_idx = val_indices + SEQ_LEN
-entry_opens = ds.opens[entry_idx]
-exit_closes = ds.closes[entry_idx + PRED_WINDOW]
-ret_per_trade_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
-
 best_pr_auc = -1.0
 best_pnl_sum = -float('inf')
 best_pnl_thr = PNL_FIXED_THRESHOLD
 epochs_no_improve = 0
-# Collect per-epoch curves for post-training plot
-lr_curve = []
-pr_auc_curve = []
-pnl_curve_pct = []
-val_acc_curve = []
 
 for e in range(1, EPOCHS + 1):
     # train
@@ -269,12 +238,18 @@ for e in range(1, EPOCHS + 1):
     f1 = f1_score(val_targets, val_preds, zero_division=0)
     pr_auc = average_precision_score(val_targets, val_probs)
     p_rate = float(np.mean(val_targets)) if len(val_targets) else 0.0
-    npr_auc = (pr_auc - p_rate) / (1.0 - p_rate + NPR_EPS)
+    npr_auc = (pr_auc - p_rate) / (1.0 - p_rate + 1e-12)
 
-    # PnL with fixed threshold on validation
+    # PnL with fixed threshold 0.565 on validation
     val_probs_np = np.asarray(val_probs, dtype=np.float32)
     mask_fixed = val_probs_np >= PNL_FIXED_THRESHOLD
     trades_fixed = int(mask_fixed.sum())
+    # Precompute per-trade returns on validation subset for fixed-threshold PnL (@0.565)
+    val_indices = np.asarray(val_ds.indices, dtype=np.int64)
+    entry_idx = val_indices + SEQ_LEN
+    entry_opens = ds.opens[entry_idx]
+    exit_closes = ds.closes[entry_idx + PRED_WINDOW]
+    ret_per_trade_val_fixed = exit_closes / np.maximum(entry_opens, MIN_DENOM_EPS) - 1.0
     pnl_fixed = float(np.sum(ret_per_trade_val_fixed[mask_fixed])) if trades_fixed > 0 else 0.0
 
     # lr logging via scheduler
@@ -283,10 +258,9 @@ for e in range(1, EPOCHS + 1):
     except Exception:
         curr_lr = opt.param_groups[0]['lr']
 
-    val_acc = (corr/tot_s) if tot_s > 0 else 0.0
     print(
         f"Epoch {e}/{EPOCHS} lr {curr_lr:.2e} "
-        f"loss {total_loss/len(train_ds):.4f} val_acc {val_acc:.3f} "
+        f"loss {total_loss/len(train_ds):.4f} val_acc {(corr/tot_s) if tot_s>0 else 0.0:.3f} "
         f"F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} nPR_AUC {npr_auc:.3f} "
         f"PNL@{PNL_FIXED_THRESHOLD} {pnl_fixed*100:.2f}% trades={trades_fixed}"
     )
@@ -295,16 +269,10 @@ for e in range(1, EPOCHS + 1):
     old_lr = opt.param_groups[0]['lr']
     scheduler.step(pr_auc)
     new_lr = opt.param_groups[0]['lr']
-    if new_lr < old_lr - LR_CHANGE_EPS:
+    if new_lr < old_lr - 1e-12:
         current_patience = int(math.ceil(current_patience * 1.5))
         scheduler.patience = current_patience
         print(f"LR reduced to {new_lr:.2e}. Next patience set to {current_patience} epochs.")
-
-    # collect curves (use curr_lr of this epoch)
-    lr_curve.append(float(curr_lr))
-    pr_auc_curve.append(float(pr_auc))
-    pnl_curve_pct.append(float(pnl_fixed*100.0))
-    val_acc_curve.append(float(val_acc))
 
     # best-save by PR AUC
     if pr_auc > best_pr_auc + 1e-6:
@@ -318,7 +286,7 @@ for e in range(1, EPOCHS + 1):
         }, MODEL_PATH)
         print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
 
-    # best-save by PnL (sum returns)
+    # best-save by PnL@0.565 (sum returns)
     if pnl_fixed > best_pnl_sum + 1e-12:
         best_pnl_sum = pnl_fixed
         best_pnl_thr = PNL_FIXED_THRESHOLD
@@ -338,40 +306,24 @@ for e in range(1, EPOCHS + 1):
 print(f"Лучшая модель с PR_AUC={best_pr_auc:.3f} сохранена в {MODEL_PATH.resolve()}")
 print(f"Лучшая модель с pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}% сохранена в {PNL_MODEL_PATH.resolve()}")
 
-# ─── Пост-обучающие кривые ────────────────────────────────────────────
+# Post-training curves (normalized)
 try:
     import numpy as np
     import matplotlib.pyplot as plt
     curves = {
-        'LR': np.asarray(lr_curve, dtype=np.float64),
-        'PR_AUC': np.asarray(pr_auc_curve, dtype=np.float64),
-        'PnL%': np.asarray(pnl_curve_pct, dtype=np.float64),
-        'ValAcc': np.asarray(val_acc_curve, dtype=np.float64),
+        'LR': np.asarray([curr_lr], dtype=np.float64),  # single-epoch placeholder if needed
+        'PR_AUC': np.asarray([], dtype=np.float64),
+        'PnL%': np.asarray([], dtype=np.float64),
+        'ValAcc': np.asarray([], dtype=np.float64),
     }
+    eps = 1e-12
     plt.figure(figsize=(8,5))
-    x = np.arange(1, len(lr_curve)+1)
-    colors = {}
+    x = np.arange(1, 1+1)
     for name, arr in curves.items():
         if arr.size == 0:
             continue
-        arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + PLOT_NORM_EPS)
-        line, = plt.plot(x[:len(arr_norm)], arr_norm, label=name)
-        colors[name] = line.get_color()
-    # annotate max PR_AUC and max PnL%
-    if len(pr_auc_curve) > 0:
-        i_best_pr = int(np.nanargmax(pr_auc_curve))
-        y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + PLOT_NORM_EPS)
-        plt.scatter([i_best_pr+1], [y_best_pr], color=colors.get('PR_AUC', '#2ca02c'), s=40)
-        plt.annotate(f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f}\n(ep={i_best_pr+1})",
-                     xy=(i_best_pr+1, y_best_pr), xytext=(5, 12), textcoords='offset points',
-                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
-    if len(pnl_curve_pct) > 0:
-        i_best_pnl = int(np.nanargmax(pnl_curve_pct))
-        y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + PLOT_NORM_EPS)
-        plt.scatter([i_best_pnl+1], [y_best_pnl], color=colors.get('PnL%', '#d62728'), s=40)
-        plt.annotate(f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
-                     xy=(i_best_pnl+1, y_best_pnl), xytext=(5, -28), textcoords='offset points',
-                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
+        arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + eps)
+        plt.plot(x[:len(arr_norm)], arr_norm, label=name)
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
@@ -382,7 +334,8 @@ try:
                    bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]')
     plt.title('Training curves (normalized)')
-    plt.grid(True, alpha=0.3); plt.legend(); plt.tight_layout()
+    plt.grid(True, alpha=0.3); plt.legend(); plt.tight_layout = plt.tight_layout
+    plt.tight_layout()
     from datetime import datetime
     import pytz
     msk = pytz.timezone('Europe/Moscow')
@@ -418,16 +371,23 @@ val_indices = np.asarray(val_ds.indices, dtype=np.int64)
 entry_idx = val_indices + SEQ_LEN
 entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
-ret_per_trade_val = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
+ret_per_trade_val = exit_closes / np.maximum(entry_opens, MIN_DENOM_EPS) - 1.0
 
-print(f"Перебор порога по PnL (валидация): min={THR_SWEEP_MIN:.3f}, max={THR_SWEEP_MAX:.3f}, step={THR_SWEEP_STEP:.4f}")
-thresholds = np.arange(THR_SWEEP_MIN, THR_SWEEP_MAX + 1e-12, THR_SWEEP_STEP)
+thr_min, thr_max, thr_step = 0.43, 0.70, 0.0025
+print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
+thresholds = np.arange(thr_min, thr_max + 1e-12, thr_step)
 
 best_comp_ret = -np.inf
 best_threshold_pnl = float(thresholds[0])
 best_trades = 0
 
 thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]
+
+def _safe_sharpe_arr(r: np.ndarray) -> float:
+    if r.size < 2:
+        return 0.0
+    std = float(np.std(r))
+    return float(np.mean(r) / (std + 1e-12))
 
 for t in thresholds:
     mask = (val_probs_all >= t)
@@ -438,11 +398,11 @@ for t in thresholds:
         sum_ret = 0.0
     else:
         r = ret_per_trade_val[mask]
-        if np.any(r <= BLACK_SWAN_LIMIT):
+        if np.any(r <= -0.999999):
             comp_ret = -1.0
         else:
             comp_ret = float(np.exp(np.sum(np.log1p(r))) - 1.0)
-        sharpe = float(np.mean(r) / (np.std(r) + 1e-12)) if r.size >= 2 else 0.0
+        sharpe = _safe_sharpe_arr(r)
         sum_ret = float(np.sum(r))
     thr_list.append(float(t)); pnl_list.append(sum_ret*100.0); comp_list.append(comp_ret*100.0 if np.isfinite(comp_ret) else np.nan); sharpe_list.append(sharpe)
     if comp_ret > best_comp_ret:
