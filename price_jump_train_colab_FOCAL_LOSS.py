@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-20 07:59
+# Last modified (MSK): 2025-08-20 08:11
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -15,6 +15,11 @@ from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
 import math
 
+# Core task/window
+SEQ_LEN = 30
+PRED_WINDOW = 5
+JUMP_THRESHOLD = 0.0035
+
 # Hoisted constants
 REDUCE_ON_PLATEAU_START_LR = 5e-4
 REDUCE_ON_PLATEAU_START_PATIENCE = 9
@@ -23,12 +28,35 @@ REDUCE_ON_PLATEAU_MIN_LR = 1e-5
 PNL_FIXED_THRESHOLD = 0.565
 EARLY_STOP_EPOCHS = 25
 
-# ─── ГЛОБАЛЬНЫЕ ПАРАМЕТРЫ ─────────────────────────────────────────────
-SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035  # 30-мин история, окно 5 мин
+# Training setup
+VAL_SPLIT = 0.2
+EPOCHS = 250
+BATCH_SIZE = 512
+BASE_LR_DEFAULT = 6e-4
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
-# Focal Loss параметры (подбираются по валидации)
-ALPHA_NEG, ALPHA_POS = 0.25, 0.75
+# Model architecture
+HIDDEN_SIZE = 64
+NUM_LAYERS = 2
+DROPOUT_DEFAULT = 0.30
+
+# Focal Loss parameters (tunable)
+ALPHA_NEG = 0.25
+ALPHA_POS = 0.75
 FOCAL_GAMMA = 2.0
+
+# Data normalization / epsilons
+REF_VOL_EPS = 1e-8
+NPR_EPS = 1e-12
+PLOT_NORM_EPS = 1e-12
+LR_CHANGE_EPS = 1e-12
+BLACK_SWAN_LIMIT = -0.999999
+
+# Threshold sweep defaults
+THR_SWEEP_MIN = 0.43
+THR_SWEEP_MAX = 0.70
+THR_SWEEP_STEP = 0.0025
+
 
 # ─── ДАННЫЕ ───────────────────────────────────────────────────────────
 def load_dataframe(path: Path) -> pd.DataFrame:
@@ -59,7 +87,7 @@ class CandleDataset(Dataset):
             window_rel_prices = window_raw_prices / ref_open - 1.0
 
             window_raw_vol = volumes[i - SEQ_LEN + 1 : i + 1].copy()
-            ref_vol        = max(float(window_raw_vol[0, 0]), 1e-8)
+            ref_vol        = max(float(window_raw_vol[0, 0]), REF_VOL_EPS)
             window_rel_vol = window_raw_vol / ref_vol - 1.0
 
             window_rel = np.concatenate([window_rel_prices, window_rel_vol], axis=1)
@@ -79,7 +107,7 @@ class CandleDataset(Dataset):
 
 # ─── МОДЕЛЬ ────────────────────────────────────────────────────────────
 class LSTMClassifier(nn.Module):
-    def __init__(self, nfeat: int = 5, hidden: int = 64, layers: int = 2, dropout: float = 0.3):
+    def __init__(self, nfeat: int = 5, hidden: int = HIDDEN_SIZE, layers: int = NUM_LAYERS, dropout: float = DROPOUT_DEFAULT):
         super().__init__()
         self.lstm = nn.LSTM(
             input_size=nfeat,
@@ -123,9 +151,6 @@ MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
-VAL_SPLIT, EPOCHS = 0.2, 250
-BATCH_SIZE, LR = 512, 6e-4
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 print("Загружаем", TRAIN_JSON)
 df = load_dataframe(TRAIN_JSON)
@@ -145,7 +170,8 @@ tl = DataLoader(train_ds,BATCH_SIZE,shuffle=True)
 vl = DataLoader(val_ds,BATCH_SIZE)
 
 # Optional overrides from meta
-DROPOUT_P = 0.3
+DROPOUT_P = DROPOUT_DEFAULT
+LR = BASE_LR_DEFAULT
 _got_dropout = False
 _got_base_lr = False
 _src_dropout = "default"
@@ -179,13 +205,6 @@ if _got_base_lr:
 else:
 	print(f"base_lr взят по умолчанию: {LR:.2e}")
 
-# Precompute per-trade returns on validation subset for fixed-threshold PnL (@0.565)
-val_indices = np.asarray(val_ds.indices, dtype=np.int64)
-entry_idx = val_indices + SEQ_LEN
-entry_opens = ds.opens[entry_idx]
-exit_closes = ds.closes[entry_idx + PRED_WINDOW]
-ret_per_trade_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
-
 # модель/опт/шедулер/лосс
 model = LSTMClassifier(dropout=DROPOUT_P).to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
@@ -195,9 +214,16 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
 )
 lossf = FocalLoss(alpha=(ALPHA_NEG, ALPHA_POS), gamma=FOCAL_GAMMA)
 
+# Precompute per-trade returns on validation subset for fixed-threshold PnL (@PNL_FIXED_THRESHOLD)
+val_indices = np.asarray(val_ds.indices, dtype=np.int64)
+entry_idx = val_indices + SEQ_LEN
+entry_opens = ds.opens[entry_idx]
+exit_closes = ds.closes[entry_idx + PRED_WINDOW]
+ret_per_trade_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
+
 best_pr_auc = -1.0
 best_pnl_sum = -float('inf')
-best_pnl_thr = 0.565
+best_pnl_thr = PNL_FIXED_THRESHOLD
 epochs_no_improve = 0
 # Collect per-epoch curves for post-training plot
 lr_curve = []
@@ -243,9 +269,9 @@ for e in range(1, EPOCHS + 1):
     f1 = f1_score(val_targets, val_preds, zero_division=0)
     pr_auc = average_precision_score(val_targets, val_probs)
     p_rate = float(np.mean(val_targets)) if len(val_targets) else 0.0
-    npr_auc = (pr_auc - p_rate) / (1.0 - p_rate + 1e-12)
+    npr_auc = (pr_auc - p_rate) / (1.0 - p_rate + NPR_EPS)
 
-    # PnL with fixed threshold 0.565 on validation
+    # PnL with fixed threshold on validation
     val_probs_np = np.asarray(val_probs, dtype=np.float32)
     mask_fixed = val_probs_np >= PNL_FIXED_THRESHOLD
     trades_fixed = int(mask_fixed.sum())
@@ -262,14 +288,14 @@ for e in range(1, EPOCHS + 1):
         f"Epoch {e}/{EPOCHS} lr {curr_lr:.2e} "
         f"loss {total_loss/len(train_ds):.4f} val_acc {val_acc:.3f} "
         f"F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} nPR_AUC {npr_auc:.3f} "
-        f"PNL@0.565 {pnl_fixed*100:.2f}% trades={trades_fixed}"
+        f"PNL@{PNL_FIXED_THRESHOLD} {pnl_fixed*100:.2f}% trades={trades_fixed}"
     )
 
     # step scheduler and dynamically expand patience on LR reduction
     old_lr = opt.param_groups[0]['lr']
     scheduler.step(pr_auc)
     new_lr = opt.param_groups[0]['lr']
-    if new_lr < old_lr - 1e-12:
+    if new_lr < old_lr - LR_CHANGE_EPS:
         current_patience = int(math.ceil(current_patience * 1.5))
         scheduler.patience = current_patience
         print(f"LR reduced to {new_lr:.2e}. Next patience set to {current_patience} epochs.")
@@ -292,10 +318,10 @@ for e in range(1, EPOCHS + 1):
         }, MODEL_PATH)
         print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
 
-    # best-save by PnL@0.565 (sum returns)
+    # best-save by PnL (sum returns)
     if pnl_fixed > best_pnl_sum + 1e-12:
         best_pnl_sum = pnl_fixed
-        best_pnl_thr = 0.565
+        best_pnl_thr = PNL_FIXED_THRESHOLD
         PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save({
             "model_state": model.state_dict(),
@@ -312,7 +338,7 @@ for e in range(1, EPOCHS + 1):
 print(f"Лучшая модель с PR_AUC={best_pr_auc:.3f} сохранена в {MODEL_PATH.resolve()}")
 print(f"Лучшая модель с pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}% сохранена в {PNL_MODEL_PATH.resolve()}")
 
-# Post-training curves (normalized)
+# ─── Пост-обучающие кривые ────────────────────────────────────────────
 try:
     import numpy as np
     import matplotlib.pyplot as plt
@@ -322,27 +348,26 @@ try:
         'PnL%': np.asarray(pnl_curve_pct, dtype=np.float64),
         'ValAcc': np.asarray(val_acc_curve, dtype=np.float64),
     }
-    eps = 1e-12
     plt.figure(figsize=(8,5))
     x = np.arange(1, len(lr_curve)+1)
     colors = {}
     for name, arr in curves.items():
         if arr.size == 0:
             continue
-        arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + eps)
+        arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + PLOT_NORM_EPS)
         line, = plt.plot(x[:len(arr_norm)], arr_norm, label=name)
         colors[name] = line.get_color()
     # annotate max PR_AUC and max PnL%
     if len(pr_auc_curve) > 0:
         i_best_pr = int(np.nanargmax(pr_auc_curve))
-        y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + eps)
+        y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + PLOT_NORM_EPS)
         plt.scatter([i_best_pr+1], [y_best_pr], color=colors.get('PR_AUC', '#2ca02c'), s=40)
         plt.annotate(f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f}\n(ep={i_best_pr+1})",
                      xy=(i_best_pr+1, y_best_pr), xytext=(5, 12), textcoords='offset points',
                      bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
     if len(pnl_curve_pct) > 0:
         i_best_pnl = int(np.nanargmax(pnl_curve_pct))
-        y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + eps)
+        y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + PLOT_NORM_EPS)
         plt.scatter([i_best_pnl+1], [y_best_pnl], color=colors.get('PnL%', '#d62728'), s=40)
         plt.annotate(f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
                      xy=(i_best_pnl+1, y_best_pnl), xytext=(5, -28), textcoords='offset points',
@@ -395,21 +420,14 @@ entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
 ret_per_trade_val = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 
-thr_min, thr_max, thr_step = 0.43, 0.70, 0.0025
-print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
-thresholds = np.arange(thr_min, thr_max + 1e-12, thr_step)
+print(f"Перебор порога по PnL (валидация): min={THR_SWEEP_MIN:.3f}, max={THR_SWEEP_MAX:.3f}, step={THR_SWEEP_STEP:.4f}")
+thresholds = np.arange(THR_SWEEP_MIN, THR_SWEEP_MAX + 1e-12, THR_SWEEP_STEP)
 
 best_comp_ret = -np.inf
 best_threshold_pnl = float(thresholds[0])
 best_trades = 0
 
 thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]
-
-def _safe_sharpe_arr(r: np.ndarray) -> float:
-    if r.size < 2:
-        return 0.0
-    std = float(np.std(r))
-    return float(np.mean(r) / (std + 1e-12))
 
 for t in thresholds:
     mask = (val_probs_all >= t)
@@ -420,11 +438,11 @@ for t in thresholds:
         sum_ret = 0.0
     else:
         r = ret_per_trade_val[mask]
-        if np.any(r <= -0.999999):
+        if np.any(r <= BLACK_SWAN_LIMIT):
             comp_ret = -1.0
         else:
             comp_ret = float(np.exp(np.sum(np.log1p(r))) - 1.0)
-        sharpe = _safe_sharpe_arr(r)
+        sharpe = float(np.mean(r) / (np.std(r) + 1e-12)) if r.size >= 2 else 0.0
         sum_ret = float(np.sum(r))
     thr_list.append(float(t)); pnl_list.append(sum_ret*100.0); comp_list.append(comp_ret*100.0 if np.isfinite(comp_ret) else np.nan); sharpe_list.append(sharpe)
     if comp_ret > best_comp_ret:

@@ -23,6 +23,14 @@ REDUCE_ON_PLATEAU_FACTOR = 1/3
 REDUCE_ON_PLATEAU_MIN_LR = 1e-5
 PNL_FIXED_THRESHOLD = 0.565
 EARLY_STOP_EPOCHS = 25
+# Model/training
+LSTM_HIDDEN = 64
+LSTM_LAYERS = 2
+DEFAULT_DROPOUT = 0.3
+# Data epsilons
+REF_VOL_EPS = 1e-8
+PRICE_EPS_SCALE = 1e-6
+MIN_DENOM_EPS = 1e-8
 
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035
 
@@ -80,12 +88,12 @@ class CandleDataset(Dataset):
             ], axis=1).astype(np.float32)
 
             # relative volume vs first volume
-            ref_vol = max(float(v_win[0, 0]), 1e-8)
+            ref_vol = max(float(v_win[0, 0]), REF_VOL_EPS)
             vol_rel = (v_win / ref_vol - 1.0).astype(np.float32)  # (seq_len,1)
 
             # ratios
             body = np.abs(c_win - o_win)
-            eps = np.maximum(1e-8, 1e-6 * np.maximum(o_win, 1.0))
+            eps = np.maximum(MIN_DENOM_EPS, PRICE_EPS_SCALE * np.maximum(o_win, 1.0))
             denom = np.maximum(body, eps)
             upper = h_win - np.maximum(o_win, c_win)
             lower = np.minimum(o_win, c_win) - l_win
@@ -109,7 +117,7 @@ class CandleDataset(Dataset):
 
 
 class LSTMClassifier(nn.Module):
-    def __init__(self, nfeat: int = 8, hidden: int = 64, layers: int = 2, dropout: float = 0.3):
+    def __init__(self, nfeat: int = 8, hidden: int = LSTM_HIDDEN, layers: int = LSTM_LAYERS, dropout: float = DEFAULT_DROPOUT):
         super().__init__()
         self.lstm = nn.LSTM(
             input_size=nfeat,
@@ -142,7 +150,7 @@ train_loader = DataLoader(train_ds, BATCH_SIZE, shuffle=True)
 val_loader   = DataLoader(val_ds, BATCH_SIZE)
 
 # Optional overrides from meta
-DROPOUT_P = 0.3
+DROPOUT_P = DEFAULT_DROPOUT
 _got_dropout = False
 _got_base_lr = False
 _src_dropout = "default"
@@ -170,7 +178,7 @@ except Exception as ex:
 if _got_dropout:
 	print(f"dropout прочитан из {_src_dropout}: {DROPOUT_P:.3f}")
 else:
-	print(f"dropout взят по умолчанию: {DROPOUT_P:.3f}")
+	print(f"dropout взят по умолчанию: {DROOPOUT_P if 'DROOPOUT_P' in globals() else DROPOUT_P:.3f}")
 if _got_base_lr:
 	print(f"base_lr прочитан из {_src_base_lr}: {LR:.2e}")
 else:
@@ -189,11 +197,11 @@ val_indices = np.asarray(val_ds.indices, dtype=np.int64)
 entry_idx = val_indices + SEQ_LEN
 entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
-ret_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
+ret_val_fixed = exit_closes / np.maximum(entry_opens, MIN_DENOM_EPS) - 1.0
 
 best_pr_auc = -1.0
 best_pnl_sum = -float('inf')
-best_pnl_thr = 0.565
+best_pnl_thr = PNL_FIXED_THRESHOLD
 epochs_no_improve = 0
 # Collect per-epoch curves for post-training plot
 lr_curve = []
@@ -242,7 +250,7 @@ for e in range(1, EPOCHS + 1):
         f"Epoch {e}/{EPOCHS} lr {curr_lr:.2e} "
         f"loss {total_loss/len(train_ds):.4f} val_acc {val_acc:.3f} "
         f"F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} nPR_AUC {npr_auc:.3f} "
-        f"PNL@0.565 {pnl_fixed*100:.2f}% trades={trades_fixed}"
+        f"PNL@{PNL_FIXED_THRESHOLD} {pnl_fixed*100:.2f}% trades={trades_fixed}"
     )
 
     old_lr = opt.param_groups[0]['lr']
@@ -271,7 +279,7 @@ for e in range(1, EPOCHS + 1):
 
     if pnl_fixed > best_pnl_sum + 1e-12:
         best_pnl_sum = pnl_fixed
-        best_pnl_thr = 0.565
+        best_pnl_thr = PNL_FIXED_THRESHOLD
         PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save({
             "model_state": model.state_dict(),
@@ -364,7 +372,7 @@ with torch.no_grad():
 
 entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
-ret_per_trade_val = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
+ret_per_trade_val = exit_closes / np.maximum(entry_opens, MIN_DENOM_EPS) - 1.0
 
 thr_min, thr_max, thr_step = 0.43, 0.70, 0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
