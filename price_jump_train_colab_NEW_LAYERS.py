@@ -27,10 +27,12 @@ EARLY_STOP_EPOCHS = 25
 LSTM_HIDDEN = 64
 LSTM_LAYERS = 2
 DEFAULT_DROPOUT = 0.3
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # Data epsilons
 REF_VOL_EPS = 1e-8
 PRICE_EPS_SCALE = 1e-6
 MIN_DENOM_EPS = 1e-8
+BLACK_SWAN_LIMIT = -0.999999
 # Training session hyperparams
 VAL_SPLIT = 0.2
 EPOCHS = 250
@@ -48,7 +50,6 @@ MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
-DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
 def load_dataframe(path: Path) -> pd.DataFrame:
@@ -401,7 +402,7 @@ for t in thresholds:
         comp_ret = -np.inf; sharpe = 0.0; sum_ret = 0.0
     else:
         r = ret_per_trade_val[mask]
-        if np.any(r <= -0.999999): comp_ret = -1.0
+        if np.any(r <= BLACK_SWAN_LIMIT): comp_ret = -1.0
         else: comp_ret = float(np.exp(np.sum(np.log1p(r))) - 1.0)
         sharpe = _safe_sharpe(r)
         sum_ret = float(np.sum(r))

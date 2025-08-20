@@ -25,12 +25,14 @@ EARLY_STOP_EPOCHS = 25
 LSTM_HIDDEN = 64
 LSTM_LAYERS = 2
 DEFAULT_DROPOUT = 0.3
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # Data preprocessing epsilons
 REF_VOL_EPS = 1e-8
 MIN_DENOM_EPS = 1e-12
 PLOT_NORM_EPS = 1e-12           # eps при нормализации кривых на графике
 LR_CHANGE_EPS = 1e-12           # eps для сравнения изменения LR
 BLACK_SWAN_LIMIT = -0.999999    # защита от краха при комп. доходности
+NPR_EPS = 1e-12                 # eps для нормализации PR AUC
 # Threshold sweep defaults (post-training)
 THR_SWEEP_MIN = 0.43
 THR_SWEEP_MAX = 0.70
