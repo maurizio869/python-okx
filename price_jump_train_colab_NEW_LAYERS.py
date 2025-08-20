@@ -1,5 +1,5 @@
 # price_jump_train_colab_NEW_LAYERS.py
-# Last modified (MSK): 2025-08-20 07:59
+# Last modified (MSK): 2025-08-20 08:35
 """Обучение LSTM c расширенными признаками:
 OHLC (rel), V (rel), upper_ratio, lower_ratio, body_sign.
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
@@ -31,6 +31,15 @@ DEFAULT_DROPOUT = 0.3
 REF_VOL_EPS = 1e-8
 PRICE_EPS_SCALE = 1e-6
 MIN_DENOM_EPS = 1e-8
+# Training session hyperparams
+VAL_SPLIT = 0.2
+EPOCHS = 250
+BATCH_SIZE = 512
+PRED_THRESHOLD = 0.5
+PATIENCE_GROWTH = 1.5
+IMPROVE_EPS = 1e-6
+COMP_EPS = 1e-12
+SHARPE_MIN_SAMPLES = 2
 
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035
 
@@ -39,8 +48,6 @@ MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
-VAL_SPLIT, EPOCHS = 0.2, 250
-BATCH_SIZE, LR = 512, 6e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
@@ -178,7 +185,7 @@ except Exception as ex:
 if _got_dropout:
 	print(f"dropout прочитан из {_src_dropout}: {DROPOUT_P:.3f}")
 else:
-	print(f"dropout взят по умолчанию: {DROOPOUT_P if 'DROOPOUT_P' in globals() else DROPOUT_P:.3f}")
+	print(f"dropout взят по умолчанию: {DROPOUT_P:.3f}")
 if _got_base_lr:
 	print(f"base_lr прочитан из {_src_base_lr}: {LR:.2e}")
 else:
@@ -222,7 +229,7 @@ for e in range(1, EPOCHS + 1):
         for xb, yb in val_loader:
             logits = model(xb.to(DEVICE))
             prob1  = torch.softmax(logits, dim=1)[:, 1].cpu()
-            pred   = (prob1 >= 0.5).to(torch.long)
+            pred   = (prob1 >= PRED_THRESHOLD).to(torch.long)
             y_cpu  = yb.to(torch.long)
             corr  += (pred.cpu() == y_cpu).sum().item(); tot_s += y_cpu.size(0)
             val_targets.extend(y_cpu.tolist()); val_probs.extend(prob1.tolist()); val_preds.extend(pred.cpu().tolist())
@@ -257,7 +264,7 @@ for e in range(1, EPOCHS + 1):
     scheduler.step(pr_auc)
     new_lr = opt.param_groups[0]['lr']
     if new_lr < old_lr - 1e-12:
-        current_patience = int(math.ceil(current_patience * 1.5))
+        current_patience = int(math.ceil(current_patience * PATIENCE_GROWTH))
         scheduler.patience = current_patience
         print(f"LR reduced to {new_lr:.2e}. Next patience set to {current_patience} epochs.")
 
@@ -267,7 +274,7 @@ for e in range(1, EPOCHS + 1):
     pnl_curve_pct.append(float(pnl_fixed*100.0))
     val_acc_curve.append(float(val_acc))
 
-    if pr_auc > best_pr_auc + 1e-6:
+    if pr_auc > best_pr_auc + IMPROVE_EPS:
         best_pr_auc = pr_auc; epochs_no_improve = 0
         MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save({
@@ -277,7 +284,7 @@ for e in range(1, EPOCHS + 1):
         }, MODEL_PATH)
         print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
 
-    if pnl_fixed > best_pnl_sum + 1e-12:
+    if pnl_fixed > best_pnl_sum + COMP_EPS:
         best_pnl_sum = pnl_fixed
         best_pnl_thr = PNL_FIXED_THRESHOLD
         PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -376,16 +383,16 @@ ret_per_trade_val = exit_closes / np.maximum(entry_opens, MIN_DENOM_EPS) - 1.0
 
 thr_min, thr_max, thr_step = 0.43, 0.70, 0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
-thresholds = np.arange(thr_min, thr_max + 1e-12, thr_step)
+thresholds = np.arange(thr_min, thr_max + COMP_EPS, thr_step)
 
 best_comp_ret = -np.inf
 best_threshold_pnl = float(thresholds[0])
 best_trades = 0
 
 def _safe_sharpe(r: np.ndarray) -> float:
-    if r.size < 2: return 0.0
+    if r.size < SHARPE_MIN_SAMPLES: return 0.0
     std = float(np.std(r))
-    return float(np.mean(r) / (std + 1e-12))
+    return float(np.mean(r) / (std + COMP_EPS))
 
 for t in thresholds:
     mask = (val_probs_all >= t)

@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-20 07:59
+# Last modified (MSK): 2025-08-20 08:35
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
  Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -31,11 +31,20 @@ MIN_DENOM_EPS = 1e-12
 PLOT_NORM_EPS = 1e-12           # eps при нормализации кривых на графике
 LR_CHANGE_EPS = 1e-12           # eps для сравнения изменения LR
 BLACK_SWAN_LIMIT = -0.999999    # защита от краха при комп. доходности
-
 # Threshold sweep defaults (post-training)
 THR_SWEEP_MIN = 0.43
 THR_SWEEP_MAX = 0.70
 THR_SWEEP_STEP = 0.0025
+# Training session hyperparams
+VAL_SPLIT = 0.2
+EPOCHS = 250
+BATCH_SIZE = 512
+BASE_LR_DEFAULT = REDUCE_ON_PLATEAU_START_LR
+PRED_THRESHOLD = 0.5
+PATIENCE_GROWTH = 1.5
+IMPROVE_EPS = 1e-6
+COMP_EPS = 1e-12
+SHARPE_MIN_SAMPLES = 2
 
 
 def load_dataframe(path: Path) -> pd.DataFrame:
@@ -205,7 +214,7 @@ for e in range(1, EPOCHS+1):
         for x,y in vl:
             logits = model(x.to(DEVICE))
             prob1  = torch.softmax(logits, dim=1)[:,1].cpu()
-            pred   = (prob1 >= 0.5).to(torch.long)
+            pred   = (prob1 >= PRED_THRESHOLD).to(torch.long)
             y_cpu  = y.to(torch.long)
             
             corr  += (pred.cpu() == y_cpu).sum().item(); tot_s += y_cpu.size(0)
@@ -245,7 +254,7 @@ for e in range(1, EPOCHS+1):
     scheduler.step(pr_auc)
     new_lr = opt.param_groups[0]['lr']
     if new_lr < old_lr - LR_CHANGE_EPS:
-        current_patience = int(math.ceil(current_patience * 1.5))
+        current_patience = int(math.ceil(current_patience * PATIENCE_GROWTH))
         scheduler.patience = current_patience
         print(f"LR reduced to {new_lr:.2e}. Next patience set to {current_patience} epochs.")
 
@@ -256,7 +265,7 @@ for e in range(1, EPOCHS+1):
     val_acc_curve.append(float(val_acc))
 
     # save best model by PR AUC
-    if pr_auc > best_pr_auc + 1e-6:
+    if pr_auc > best_pr_auc + IMPROVE_EPS:
         best_pr_auc = pr_auc
         epochs_no_improve = 0
         MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -264,7 +273,7 @@ for e in range(1, EPOCHS+1):
         print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
     
     # save best-by-PnL model (using PNL@0.565 sum of returns)
-    if pnl_fixed > best_pnl_sum + 1e-12:
+    if pnl_fixed > best_pnl_sum + COMP_EPS:
         best_pnl_sum = pnl_fixed
         best_pnl_thr = PNL_FIXED_THRESHOLD
         PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -381,7 +390,7 @@ for t in thresholds:
             comp_ret = -1.0
         else:
             comp_ret = float(np.exp(np.sum(np.log1p(r))) - 1.0)
-        sharpe = float(np.mean(r) / (np.std(r) + 1e-12)) if r.size >= 2 else 0.0
+        sharpe = float(np.mean(r) / (np.std(r) + PLOT_NORM_EPS)) if r.size >= SHARPE_MIN_SAMPLES else 0.0
         sum_ret = float(np.sum(r))
     thr_list.append(float(t)); pnl_list.append(sum_ret*100.0); comp_list.append(comp_ret*100.0 if np.isfinite(comp_ret) else np.nan); sharpe_list.append(sharpe)
     if comp_ret > best_comp_ret:

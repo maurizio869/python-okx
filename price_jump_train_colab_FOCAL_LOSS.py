@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-20 07:59
+# Last modified (MSK): 2025-08-20 08:35
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -36,6 +36,20 @@ MIN_DENOM_EPS = 1e-12
 # Focal Loss параметры (подбираются по валидации)
 ALPHA_NEG, ALPHA_POS = 0.25, 0.75
 FOCAL_GAMMA = 2.0
+
+# Session-level tunables
+VAL_SPLIT = 0.2
+EPOCHS = 250
+BATCH_SIZE = 512
+PRED_THRESHOLD = 0.5
+PATIENCE_GROWTH = 1.5
+IMPROVE_EPS = 1e-6
+COMP_EPS = 1e-12
+SHARPE_MIN_SAMPLES = 2
+THR_SWEEP_MIN = 0.43
+THR_SWEEP_MAX = 0.70
+THR_SWEEP_STEP = 0.0025
+BLACK_SWAN_LIMIT = -0.999999
 
 # ─── ДАННЫЕ ───────────────────────────────────────────────────────────
 def load_dataframe(path: Path) -> pd.DataFrame:
@@ -130,8 +144,6 @@ MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
-VAL_SPLIT, EPOCHS = 0.2, 250
-BATCH_SIZE, LR = 512, 6e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 print("Загружаем", TRAIN_JSON)
@@ -221,7 +233,7 @@ for e in range(1, EPOCHS + 1):
         for xb, yb in vl:
             logits = model(xb.to(DEVICE))
             prob1  = torch.softmax(logits, dim=1)[:, 1].cpu()
-            pred   = (prob1 >= 0.5).to(torch.long)
+            pred   = (prob1 >= PRED_THRESHOLD).to(torch.long)
             y_cpu  = yb.to(torch.long)
 
             corr  += (pred.cpu() == y_cpu).sum().item()
@@ -240,11 +252,11 @@ for e in range(1, EPOCHS + 1):
     p_rate = float(np.mean(val_targets)) if len(val_targets) else 0.0
     npr_auc = (pr_auc - p_rate) / (1.0 - p_rate + 1e-12)
 
-    # PnL with fixed threshold 0.565 on validation
+    # PnL with fixed threshold on validation
     val_probs_np = np.asarray(val_probs, dtype=np.float32)
     mask_fixed = val_probs_np >= PNL_FIXED_THRESHOLD
     trades_fixed = int(mask_fixed.sum())
-    # Precompute per-trade returns on validation subset for fixed-threshold PnL (@0.565)
+    # Precompute per-trade returns on validation subset for fixed-threshold PnL
     val_indices = np.asarray(val_ds.indices, dtype=np.int64)
     entry_idx = val_indices + SEQ_LEN
     entry_opens = ds.opens[entry_idx]
@@ -270,12 +282,12 @@ for e in range(1, EPOCHS + 1):
     scheduler.step(pr_auc)
     new_lr = opt.param_groups[0]['lr']
     if new_lr < old_lr - 1e-12:
-        current_patience = int(math.ceil(current_patience * 1.5))
+        current_patience = int(math.ceil(current_patience * PATIENCE_GROWTH))
         scheduler.patience = current_patience
         print(f"LR reduced to {new_lr:.2e}. Next patience set to {current_patience} epochs.")
 
     # best-save by PR AUC
-    if pr_auc > best_pr_auc + 1e-6:
+    if pr_auc > best_pr_auc + IMPROVE_EPS:
         best_pr_auc = pr_auc
         epochs_no_improve = 0
         MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -286,8 +298,8 @@ for e in range(1, EPOCHS + 1):
         }, MODEL_PATH)
         print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
 
-    # best-save by PnL@0.565 (sum returns)
-    if pnl_fixed > best_pnl_sum + 1e-12:
+    # best-save by PnL (sum returns)
+    if pnl_fixed > best_pnl_sum + COMP_EPS:
         best_pnl_sum = pnl_fixed
         best_pnl_thr = PNL_FIXED_THRESHOLD
         PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -311,7 +323,7 @@ try:
     import numpy as np
     import matplotlib.pyplot as plt
     curves = {
-        'LR': np.asarray([curr_lr], dtype=np.float64),  # single-epoch placeholder if needed
+        'LR': np.asarray([curr_lr], dtype=np.float64),
         'PR_AUC': np.asarray([], dtype=np.float64),
         'PnL%': np.asarray([], dtype=np.float64),
         'ValAcc': np.asarray([], dtype=np.float64),
@@ -373,9 +385,9 @@ entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
 ret_per_trade_val = exit_closes / np.maximum(entry_opens, MIN_DENOM_EPS) - 1.0
 
-thr_min, thr_max, thr_step = 0.43, 0.70, 0.0025
+thr_min, thr_max, thr_step = THR_SWEEP_MIN, THR_SWEEP_MAX, THR_SWEEP_STEP
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
-thresholds = np.arange(thr_min, thr_max + 1e-12, thr_step)
+thresholds = np.arange(thr_min, thr_max + COMP_EPS, thr_step)
 
 best_comp_ret = -np.inf
 best_threshold_pnl = float(thresholds[0])
@@ -384,10 +396,10 @@ best_trades = 0
 thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]
 
 def _safe_sharpe_arr(r: np.ndarray) -> float:
-    if r.size < 2:
+    if r.size < SHARPE_MIN_SAMPLES:
         return 0.0
     std = float(np.std(r))
-    return float(np.mean(r) / (std + 1e-12))
+    return float(np.mean(r) / (std + COMP_EPS))
 
 for t in thresholds:
     mask = (val_probs_all >= t)
@@ -398,7 +410,7 @@ for t in thresholds:
         sum_ret = 0.0
     else:
         r = ret_per_trade_val[mask]
-        if np.any(r <= -0.999999):
+        if np.any(r <= BLACK_SWAN_LIMIT):
             comp_ret = -1.0
         else:
             comp_ret = float(np.exp(np.sum(np.log1p(r))) - 1.0)
