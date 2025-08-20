@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-19 15:05
+# Last modified (MSK): 2025-08-20 07:59
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -21,6 +21,7 @@ REDUCE_ON_PLATEAU_START_PATIENCE = 9
 REDUCE_ON_PLATEAU_FACTOR = 1/3
 REDUCE_ON_PLATEAU_MIN_LR = 1e-5
 PNL_FIXED_THRESHOLD = 0.565
+EARLY_STOP_EPOCHS = 25
 
 # ─── ГЛОБАЛЬНЫЕ ПАРАМЕТРЫ ─────────────────────────────────────────────
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035  # 30-мин история, окно 5 мин
@@ -304,7 +305,7 @@ for e in range(1, EPOCHS + 1):
         print(f"✓ Сохранена новая лучшая модель (PNL@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
     else:
         epochs_no_improve += 1
-        if epochs_no_improve >= 25:
+        if epochs_no_improve >= EARLY_STOP_EPOCHS:
             print(f"⏹ Ранний стоп: PR AUC не улучшается {epochs_no_improve} эпох подряд")
             break
 
