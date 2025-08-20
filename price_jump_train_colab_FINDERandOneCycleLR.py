@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-19 15:05
+# Last modified (MSK): 2025-08-20 10:48
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -95,6 +95,7 @@ class LSTMClassifier(nn.Module):
     def forward(self, x):
         _, (h, _) = self.lstm(x); return self.fc(h[-1])
 
+print(f"Device: {DEVICE}")
 print("Загружаем", TRAIN_JSON)
 df = load_dataframe(TRAIN_JSON)
 print(f"Загружено {len(df)} свечей")

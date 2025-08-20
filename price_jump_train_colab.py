@@ -119,6 +119,7 @@ PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
 
+print(f"Device: {DEVICE}")
 print("Загружаем", TRAIN_JSON)
 
 df = load_dataframe(TRAIN_JSON)

@@ -146,6 +146,7 @@ MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
+print(f"Device: {DEVICE}")
 print("Загружаем", TRAIN_JSON)
 df = load_dataframe(TRAIN_JSON)
 print(f"Загружено {len(df)} свечей")

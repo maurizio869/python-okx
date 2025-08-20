@@ -141,6 +141,7 @@ class LSTMClassifier(nn.Module):
         return self.fc(h[-1])
 
 
+print(f"Device: {DEVICE}")
 print("Загружаем", TRAIN_JSON)
 df = load_dataframe(TRAIN_JSON)
 print(f"Загружено {len(df)} свечей")
