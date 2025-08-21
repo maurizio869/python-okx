@@ -446,6 +446,15 @@ try:
     labels = [ln.get_label() for ln in lines]
     ax1.legend(lines, labels, loc='best')
     ax1.grid(True, alpha=0.3)
+    # constants box bottom-right
+    const_text = (
+        f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
+        f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
+        f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}"
+    )
+    ax1.text(0.98, 0.02, const_text, transform=ax1.transAxes,
+             ha='right', va='bottom', fontsize=8,
+             bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     fig.tight_layout()
     from datetime import datetime
     import pytz

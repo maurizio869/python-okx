@@ -37,7 +37,7 @@ MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
 VAL_SPLIT, EPOCHS = 0.2, 190
 BATCH_SIZE, BASE_LR = 512, 3e-4
-best_lr_default = 2.57e-03
+best_lr_default = 2.17e-03
 # Tunable LR Finder params
 LR_FINDER_MIN_FACTOR = 1.0/20.0  # min_lr = BASE_LR * LR_FINDER_MIN_FACTOR
 LR_FINDER_MAX_FACTOR = 8.0       # max_lr = BASE_LR * LR_FINDER_MAX_FACTOR
@@ -46,12 +46,12 @@ BEST_LR_MULTIPLIER = 1.5         # max_lr ~ BEST_LR_MULTIPLIER * best_lr
 CLIP_MIN_FACTOR = 0.8            # clip lower bound = BASE_LR * CLIP_MIN_FACTOR
 CLIP_MAX_FACTOR = 8.0            # clip upper bound = BASE_LR * CLIP_MAX_FACTOR
 # OneCycleLR shape parameters
-ONECYCLE_PCT_START = 0.15
+ONECYCLE_PCT_START = 0.2
 ONECYCLE_DIV_FACTOR = 2.0
-ONECYCLE_FINAL_DIV_FACTOR = 2.0
+ONECYCLE_FINAL_DIV_FACTOR = 7.0
 WEIGHT_DECAY = 3.5e-5
 # Default dropout if no hyper/meta provided
-DEFAULT_DROPOUT = 0.36
+DEFAULT_DROPOUT = 0.31
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EARLY_STOP_EPOCHS = 40
 
@@ -395,6 +395,16 @@ try:
     labels = [ln.get_label() for ln in lines]
     ax1.legend(lines, labels, loc='best')
     ax1.grid(True, alpha=0.3)
+    # constants box bottom-right similar to curves plot
+    const_text = (
+        f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
+        f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
+        f"pct_start={ONECYCLE_PCT_START}\ndiv_factor={ONECYCLE_DIV_FACTOR}\nfinal_div={ONECYCLE_FINAL_DIV_FACTOR}\n"
+        f"WD={WEIGHT_DECAY}\nDROPOUT={DROPOUT_P:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}"
+    )
+    ax1.text(0.98, 0.02, const_text, transform=ax1.transAxes,
+             ha='right', va='bottom', fontsize=8,
+             bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     fig.tight_layout()
     # filename with MSK datetime
     from datetime import datetime
