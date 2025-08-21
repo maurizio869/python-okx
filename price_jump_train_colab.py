@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-20 10:52
+# Last modified (MSK): 2025-08-21 14:26
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
  Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -15,16 +15,16 @@ import matplotlib.pyplot as plt
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035  # 30-мин история, окно 5 мин
 
 # Scheduler and PnL constants (hoisted)
-REDUCE_ON_PLATEAU_START_LR = 5e-4
-REDUCE_ON_PLATEAU_START_PATIENCE = 9
-REDUCE_ON_PLATEAU_FACTOR = 1/3
+REDUCE_ON_PLATEAU_START_LR = 4e-4
+REDUCE_ON_PLATEAU_START_PATIENCE = 7
+REDUCE_ON_PLATEAU_FACTOR = 1/1.7
 REDUCE_ON_PLATEAU_MIN_LR = 1e-5
 PNL_FIXED_THRESHOLD = 0.565
-EARLY_STOP_EPOCHS = 25
+EARLY_STOP_EPOCHS = 40
 # Model/training constants
 LSTM_HIDDEN = 64
 LSTM_LAYERS = 2
-DEFAULT_DROPOUT = 0.3
+DEFAULT_DROPOUT = 0.35
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # Data preprocessing epsilons
 REF_VOL_EPS = 1e-8
@@ -39,8 +39,8 @@ THR_SWEEP_MAX = 0.70
 THR_SWEEP_STEP = 0.0025
 # Training session hyperparams
 VAL_SPLIT = 0.2
-EPOCHS = 250
-BATCH_SIZE = 512
+EPOCHS = 450
+BATCH_SIZE = 128
 BASE_LR_DEFAULT = REDUCE_ON_PLATEAU_START_LR
 PRED_THRESHOLD = 0.5
 PATIENCE_GROWTH = 1.5
@@ -309,24 +309,26 @@ try:
         line, = plt.plot(x[:len(arr_norm)], arr_norm, label=name)
         colors[name] = line.get_color()
     # annotate max PR_AUC and max PnL%
+    i_best_pr = None
     if len(pr_auc_curve) > 0:
         i_best_pr = int(np.nanargmax(pr_auc_curve))
         y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + PLOT_NORM_EPS)
         plt.scatter([i_best_pr+1], [y_best_pr], color=colors.get('PR_AUC', '#2ca02c'), s=40)
         plt.annotate(f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f}\n(ep={i_best_pr+1})",
-                     xy=(i_best_pr+1, y_best_pr), xytext=(5, 12), textcoords='offset points',
+                     xy=(i_best_pr+1, y_best_pr), xytext=(8, 18), textcoords='offset points',
                      bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
     if len(pnl_curve_pct) > 0:
         i_best_pnl = int(np.nanargmax(pnl_curve_pct))
         y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + PLOT_NORM_EPS)
         plt.scatter([i_best_pnl+1], [y_best_pnl], color=colors.get('PnL%', '#d62728'), s=40)
+        dy = 36 if (i_best_pr is not None and i_best_pnl == i_best_pr) else 18
         plt.annotate(f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
-                     xy=(i_best_pnl+1, y_best_pnl), xytext=(5, -28), textcoords='offset points',
+                     xy=(i_best_pnl+1, y_best_pnl), xytext=(12, dy), textcoords='offset points',
                      bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
-        f"PNL_thr={PNL_FIXED_THRESHOLD}"
+        f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}"
     )
     plt.gca().text(0.98, 0.02, const_text, transform=plt.gca().transAxes,
                    ha='right', va='bottom', fontsize=8,

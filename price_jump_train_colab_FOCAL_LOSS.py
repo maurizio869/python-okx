@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-20 10:52
+# Last modified (MSK): 2025-08-21 14:26
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -16,12 +16,12 @@ from torch.utils.data import Dataset, DataLoader, random_split
 import math
 
 # Hoisted constants
-REDUCE_ON_PLATEAU_START_LR = 5e-4
-REDUCE_ON_PLATEAU_START_PATIENCE = 9
-REDUCE_ON_PLATEAU_FACTOR = 1/3
+REDUCE_ON_PLATEAU_START_LR = 4e-4
+REDUCE_ON_PLATEAU_START_PATIENCE = 7
+REDUCE_ON_PLATEAU_FACTOR = 1/1.7
 REDUCE_ON_PLATEAU_MIN_LR = 1e-5
 PNL_FIXED_THRESHOLD = 0.565
-EARLY_STOP_EPOCHS = 25
+EARLY_STOP_EPOCHS = 40
 
 # ─── ГЛОБАЛЬНЫЕ ПАРАМЕТРЫ ─────────────────────────────────────────────
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035  # 30-мин история, окно 5 мин
@@ -29,7 +29,7 @@ SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035  # 30-мин история
 # Model/training
 LSTM_HIDDEN = 64
 LSTM_LAYERS = 2
-DEFAULT_DROPOUT = 0.3
+DEFAULT_DROPOUT = 0.35
 REF_VOL_EPS = 1e-8
 MIN_DENOM_EPS = 1e-12
 
@@ -39,8 +39,8 @@ FOCAL_GAMMA = 2.0
 
 # Session-level tunables
 VAL_SPLIT = 0.2
-EPOCHS = 250
-BATCH_SIZE = 512
+EPOCHS = 450
+BATCH_SIZE = 128
 PRED_THRESHOLD = 0.5
 PATIENCE_GROWTH = 1.5
 IMPROVE_EPS = 1e-6
@@ -253,16 +253,10 @@ for e in range(1, EPOCHS + 1):
     p_rate = float(np.mean(val_targets)) if len(val_targets) else 0.0
     npr_auc = (pr_auc - p_rate) / (1.0 - p_rate + 1e-12)
 
-    # PnL with fixed threshold on validation
+    # PnL with fixed threshold 0.565 on validation
     val_probs_np = np.asarray(val_probs, dtype=np.float32)
     mask_fixed = val_probs_np >= PNL_FIXED_THRESHOLD
     trades_fixed = int(mask_fixed.sum())
-    # Precompute per-trade returns on validation subset for fixed-threshold PnL
-    val_indices = np.asarray(val_ds.indices, dtype=np.int64)
-    entry_idx = val_indices + SEQ_LEN
-    entry_opens = ds.opens[entry_idx]
-    exit_closes = ds.closes[entry_idx + PRED_WINDOW]
-    ret_per_trade_val_fixed = exit_closes / np.maximum(entry_opens, MIN_DENOM_EPS) - 1.0
     pnl_fixed = float(np.sum(ret_per_trade_val_fixed[mask_fixed])) if trades_fixed > 0 else 0.0
 
     # lr logging via scheduler
@@ -299,7 +293,7 @@ for e in range(1, EPOCHS + 1):
         }, MODEL_PATH)
         print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
 
-    # best-save by PnL (sum returns)
+    # best-save by PnL@0.565 (sum returns)
     if pnl_fixed > best_pnl_sum + COMP_EPS:
         best_pnl_sum = pnl_fixed
         best_pnl_thr = PNL_FIXED_THRESHOLD
@@ -324,7 +318,7 @@ try:
     import numpy as np
     import matplotlib.pyplot as plt
     curves = {
-        'LR': np.asarray([curr_lr], dtype=np.float64),
+        'LR': np.asarray([curr_lr], dtype=np.float64),  # single-epoch placeholder if needed
         'PR_AUC': np.asarray([], dtype=np.float64),
         'PnL%': np.asarray([], dtype=np.float64),
         'ValAcc': np.asarray([], dtype=np.float64),
@@ -341,6 +335,7 @@ try:
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
         f"PNL_thr={PNL_FIXED_THRESHOLD}\nLOSS=Focal(gamma={FOCAL_GAMMA}, alpha_neg={ALPHA_NEG}, alpha_pos={ALPHA_POS})"
+        f"\nDROPOUT={DROPOUT_P:.3f}"
     )
     plt.gca().text(0.98, 0.02, const_text, transform=plt.gca().transAxes,
                    ha='right', va='bottom', fontsize=8,
@@ -467,16 +462,3 @@ try:
     plt.close(fig)
 except Exception as ex:
     print(f"! Не удалось построить график перебора порога: {ex}")
-
-_final_ckpt = {
-    "model_state": model.state_dict(),
-    "scaler": ds.scaler,
-    "meta": {"seq_len": SEQ_LEN, "pred_window": PRED_WINDOW, "threshold": best_threshold_pnl},
-}
-torch.save(_final_ckpt, MODEL_PATH)
-
-try:
-    with open(MODEL_META_PATH, "w", encoding="utf-8") as mf:
-        json.dump({"seq_len": int(SEQ_LEN), "pred_window": int(PRED_WINDOW), "threshold": float(best_threshold_pnl)}, mf)
-except Exception as ex:
-    print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")

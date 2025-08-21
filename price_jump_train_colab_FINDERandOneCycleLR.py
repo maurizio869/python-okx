@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-20 10:52
+# Last modified (MSK): 2025-08-21 14:26
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -35,25 +35,25 @@ MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
-VAL_SPLIT, EPOCHS = 0.2, 130
+VAL_SPLIT, EPOCHS = 0.2, 190
 BATCH_SIZE, BASE_LR = 512, 3e-4
-best_lr_default = 3.0e-03
+best_lr_default = 2.57e-03
 # Tunable LR Finder params
 LR_FINDER_MIN_FACTOR = 1.0/20.0  # min_lr = BASE_LR * LR_FINDER_MIN_FACTOR
 LR_FINDER_MAX_FACTOR = 8.0       # max_lr = BASE_LR * LR_FINDER_MAX_FACTOR
 # How to pick OneCycle max_lr from best_lr and clip range around BASE_LR
-BEST_LR_MULTIPLIER = 0.9         # max_lr ~ BEST_LR_MULTIPLIER * best_lr
+BEST_LR_MULTIPLIER = 1.5         # max_lr ~ BEST_LR_MULTIPLIER * best_lr
 CLIP_MIN_FACTOR = 0.8            # clip lower bound = BASE_LR * CLIP_MIN_FACTOR
 CLIP_MAX_FACTOR = 8.0            # clip upper bound = BASE_LR * CLIP_MAX_FACTOR
 # OneCycleLR shape parameters
-ONECYCLE_PCT_START = 0.38
-ONECYCLE_DIV_FACTOR = 30.0
-ONECYCLE_FINAL_DIV_FACTOR = 30
-WEIGHT_DECAY = 3e-5
+ONECYCLE_PCT_START = 0.15
+ONECYCLE_DIV_FACTOR = 2.0
+ONECYCLE_FINAL_DIV_FACTOR = 2.0
+WEIGHT_DECAY = 3.5e-5
 # Default dropout if no hyper/meta provided
-DEFAULT_DROPOUT = 0.24
+DEFAULT_DROPOUT = 0.36
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-EARLY_STOP_EPOCHS = 25
+EARLY_STOP_EPOCHS = 40
 
 class CandleDataset(Dataset):
     def __init__(self, df: pd.DataFrame):

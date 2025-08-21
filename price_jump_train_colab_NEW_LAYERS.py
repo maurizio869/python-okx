@@ -1,5 +1,5 @@
 # price_jump_train_colab_NEW_LAYERS.py
-# Last modified (MSK): 2025-08-20 10:52
+# Last modified (MSK): 2025-08-21 14:26
 """Обучение LSTM c расширенными признаками:
 OHLC (rel), V (rel), upper_ratio, lower_ratio, body_sign.
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
@@ -17,16 +17,16 @@ from torch.utils.data import Dataset, DataLoader, random_split
 import matplotlib.pyplot as plt
 
 # Hoisted constants
-REDUCE_ON_PLATEAU_START_LR = 5e-4
-REDUCE_ON_PLATEAU_START_PATIENCE = 9
-REDUCE_ON_PLATEAU_FACTOR = 1/3
+REDUCE_ON_PLATEAU_START_LR = 4e-4
+REDUCE_ON_PLATEAU_START_PATIENCE = 7
+REDUCE_ON_PLATEAU_FACTOR = 1/1.7
 REDUCE_ON_PLATEAU_MIN_LR = 1e-5
 PNL_FIXED_THRESHOLD = 0.565
-EARLY_STOP_EPOCHS = 25
+EARLY_STOP_EPOCHS = 40
 # Model/training
 LSTM_HIDDEN = 64
 LSTM_LAYERS = 2
-DEFAULT_DROPOUT = 0.3
+DEFAULT_DROPOUT = 0.35
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # Data epsilons
 REF_VOL_EPS = 1e-8
@@ -35,8 +35,8 @@ MIN_DENOM_EPS = 1e-8
 BLACK_SWAN_LIMIT = -0.999999
 # Training session hyperparams
 VAL_SPLIT = 0.2
-EPOCHS = 250
-BATCH_SIZE = 512
+EPOCHS = 450
+BATCH_SIZE = 128
 PRED_THRESHOLD = 0.5
 PATIENCE_GROWTH = 1.5
 IMPROVE_EPS = 1e-6
