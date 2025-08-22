@@ -1,5 +1,5 @@
 # lstm_onecycle_proba2.py
-# Last modified (MSK): 2025-08-22 22:56
+# Last modified (MSK): 2025-08-22 23:35
 """Proba2: OneCycle с предвычислением окон в Dataset (без StandardScaler).
 Окна нормализуются относительно первой свечи по open/volume, предвычисляются один раз.
 Остальная логика совпадает с основным onecycle.
@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
+import time
 
 # Reproducibility
 SEED = 42
@@ -249,53 +250,52 @@ epochs_no_improve = 0
 lr_curve = []; pr_auc_curve = []; npr_auc_curve = []; pnl_curve_pct = []; val_acc_curve = []
 
 for e in range(1, EPOCHS+1):
-    model.train(); total_loss=0.0
-    for xb,yb in train_loader:
-        xb,yb = xb.to(DEVICE), yb.to(DEVICE)
-        opt.zero_grad(); logits=model(xb); loss=lossf(logits,yb)
-        loss.backward(); opt.step(); sched.step()
-        total_loss += loss.item()*xb.size(0)
-
-    model.eval(); corr=tot_s=0
-    val_targets=[]; val_probs=[]; val_preds=[]
-    with torch.no_grad():
-        for xb,yb in val_loader:
-            logits=model(xb.to(DEVICE))
-            prob1=torch.softmax(logits,dim=1)[:,1].cpu()
-            pred=(prob1>=0.5).to(torch.long); y_cpu=yb.to(torch.long)
-            corr+=(pred.cpu()==y_cpu).sum().item(); tot_s+=y_cpu.size(0)
-            val_targets.extend(y_cpu.tolist()); val_probs.extend(prob1.tolist()); val_preds.extend(pred.cpu().tolist())
-    try: roc_auc=roc_auc_score(val_targets,val_probs)
-    except Exception: roc_auc=float('nan')
-    f1=f1_score(val_targets,val_preds,zero_division=0)
-    pr_auc=average_precision_score(val_targets,val_probs)
-    npr_auc=(pr_auc - POS_FRAC) / (1.0 - POS_FRAC + NPR_EPS)
-
-    val_probs_np=np.asarray(val_probs,dtype=np.float32)
-    if e % 10 == 0 or e == 1:
-        best_comp=-np.inf; best_thr=last_best_thr; best_trades=0; best_sum=0.0
-        for t in np.arange(thr_min,thr_max+1e-12,thr_step):
-            m=(val_probs_np>=t); n=int(m.sum())
-            if n==0:
-                comp=-np.inf; sret=0.0
-            else:
-                r=ret_val_fixed[m]
-                comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
-                sret=float(np.sum(r))
-            if comp>best_comp:
-                best_comp=comp; best_thr=float(t); best_trades=n; best_sum=sret
-        last_best_thr = best_thr
-        pnl_best_sum = best_sum
-        trades_best = best_trades
-    else:
-        m=(val_probs_np>=last_best_thr); trades_best=int(m.sum())
-        pnl_best_sum = float(np.sum(ret_val_fixed[m])) if trades_best>0 else 0.0
-
-    curr_lr = opt.param_groups[0]['lr']
-    val_acc = (corr/tot_s) if tot_s>0 else 0.0
-    print(f'Epoch {e}/{EPOCHS} lr {curr_lr:.2e} loss {total_loss/len(train_ds):.4f} '
-          f'val_acc {val_acc:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} nPR_AUC {npr_auc:.3f} '
-          f'PNL@best(thr={last_best_thr:.4f}) {pnl_best_sum*100:.2f}% trades={trades_best}')
+	_t0 = time.time()
+	model.train(); total_loss=0.0
+	for xb,yb in train_loader:
+		xb,yb = xb.to(DEVICE), yb.to(DEVICE)
+		opt.zero_grad(); logits=model(xb); loss=lossf(logits,yb)
+		loss.backward(); opt.step(); sched.step()
+		total_loss += loss.item()*xb.size(0)
+	# validation
+	model.eval(); corr=tot_s=0
+	val_targets=[]; val_probs=[]; val_preds=[]
+	with torch.no_grad():
+		for xb,yb in val_loader:
+			logits=model(xb.to(DEVICE)); prob1=torch.softmax(logits,dim=1)[:,1].cpu()
+			pred=(prob1>=0.5).to(torch.long); y_cpu=yb.to(torch.long)
+			corr+=(pred.cpu()==y_cpu).sum().item(); tot_s+=y_cpu.size(0)
+			val_targets.extend(y_cpu.tolist()); val_probs.extend(prob1.tolist()); val_preds.extend(pred.cpu().tolist())
+	try: roc_auc=roc_auc_score(val_targets,val_probs)
+	except Exception: roc_auc=float('nan')
+	f1=f1_score(val_targets,val_preds,zero_division=0)
+	pr_auc=average_precision_score(val_targets,val_probs)
+	npr_auc=(pr_auc - POS_FRAC) / (1.0 - POS_FRAC + NPR_EPS)
+	val_probs_np=np.asarray(val_probs,dtype=np.float32)
+	if e % 10 == 0 or e == 1:
+		best_comp=-np.inf; best_thr=last_best_thr; best_trades=0; best_sum=0.0
+		for t in np.arange(thr_min,thr_max+1e-12,thr_step):
+			m=(val_probs_np>=t); n=int(m.sum())
+			if n==0:
+				comp=-np.inf; sret=0.0
+			else:
+				r=ret_val_fixed[m]
+				comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
+				sret=float(np.sum(r))
+			if comp>best_comp:
+				best_comp=comp; best_thr=float(t); best_trades=n; best_sum=sret
+		last_best_thr = best_thr
+		pnl_best_sum = best_sum
+		trades_best = best_trades
+	else:
+		m=(val_probs_np>=last_best_thr); trades_best=int(m.sum())
+		pnl_best_sum = float(np.sum(ret_val_fixed[m])) if trades_best>0 else 0.0
+	curr_lr = opt.param_groups[0]['lr']
+	val_acc = (corr/tot_s) if tot_s>0 else 0.0
+	_dt = time.time() - _t0
+	print(f'Epoch {e}/{EPOCHS} lr {curr_lr:.2e} loss {total_loss/len(train_ds):.4f} '
+	      f'val_acc {val_acc:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} nPR_AUC {npr_auc:.3f} '
+	      f'PNL@best(thr={last_best_thr:.4f}) {pnl_best_sum*100:.2f}% trades={trades_best} time {(_dt):.1f}s')
 
     lr_curve.append(curr_lr); pr_auc_curve.append(float(pr_auc)); npr_auc_curve.append(float(npr_auc)); pnl_curve_pct.append(float(pnl_best_sum*100.0)); val_acc_curve.append(float(val_acc))
 

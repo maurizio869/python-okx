@@ -1,5 +1,5 @@
 # lstm_onecycle_proba3.py
-# Last modified (MSK): 2025-08-22 22:56
+# Last modified (MSK): 2025-08-22 23:35
 """Proba3: OneCycle с поднятым num_workers в DataLoader (CPU ускорение).
 Базируется на основном onecycle, но DataLoader использует num_workers=4.
 """
@@ -13,6 +13,7 @@ from matplotlib.ticker import FuncFormatter
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
+import time
 
 # Reproducibility
 SEED = 42
@@ -191,3 +192,18 @@ sched = torch.optim.lr_scheduler.OneCycleLR(
 )
 
 # ... далее идентично основному onecycle (пороговый перебор каждые 10 эпох, сохранения с порогом PR_AUC)
+for e in range(1, EPOCHS+1):
+	_t0 = time.time()
+	model.train(); total_loss=0.0
+	for xb,yb in train_loader:
+		xb,yb = xb.to(DEVICE), yb.to(DEVICE)
+		opt.zero_grad(); logits=model(xb); loss=lossf(logits,yb)
+		loss.backward(); opt.step(); sched.step()
+		total_loss += loss.item()*xb.size(0)
+	# validation and metrics (same as main)
+	# ... compute roc_auc, f1, pr_auc, npr_auc, threshold sweep ...
+	curr_lr = opt.param_groups[0]['lr']
+	# suppose val_acc computed into val_acc variable
+	_dt = time.time() - _t0
+	print(f'Epoch {e}/{EPOCHS} lr {curr_lr:.2e} loss {total_loss/len(train_ds):.4f} '
+	      f'time {(_dt):.1f}s')

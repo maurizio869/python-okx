@@ -1,5 +1,5 @@
 # lstm_onecycle_proba.py
-# Last modified (MSK): 2025-08-22 22:50
+# Last modified (MSK): 2025-08-22 23:35
 """Пробный скрипт: OneCycle с предвычислением окон и стандартизацией признаков.
 Основа — актуальный onecycle, но Dataset строит окна заранее:
 - нормализация окна: цены/объём как относительные к первому значению окна
@@ -15,6 +15,7 @@ from matplotlib.ticker import FuncFormatter
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
+import time
 
 # Reproducibility
 SEED = 42
@@ -274,6 +275,7 @@ pnl_curve_pct = []
 val_acc_curve = []
 
 for e in range(1, EPOCHS+1):
+    _t0 = time.time()
     model.train(); total_loss=0.0
     for xb,yb in train_loader:
         xb,yb = xb.to(DEVICE), yb.to(DEVICE)
@@ -319,9 +321,10 @@ for e in range(1, EPOCHS+1):
 
     curr_lr = opt.param_groups[0]['lr']
     val_acc = (corr/tot_s) if tot_s>0 else 0.0
+    _dt = time.time() - _t0
     print(f'Epoch {e}/{EPOCHS} lr {curr_lr:.2e} loss {total_loss/len(train_ds):.4f} '
           f'val_acc {val_acc:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} nPR_AUC {npr_auc:.3f} '
-          f'PNL@best(thr={last_best_thr:.4f}) {pnl_best_sum*100:.2f}% trades={trades_best}')
+          f'PNL@best(thr={last_best_thr:.4f}) {pnl_best_sum*100:.2f}% trades={trades_best} time {(_dt):.1f}s')
 
     # collect curves
     lr_curve.append(curr_lr)
