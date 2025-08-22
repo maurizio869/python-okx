@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-22 20:38
+# Last modified (MSK): 2025-08-22 21:09
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -43,19 +43,25 @@ best_lr_default = 2.17e-03
 LR_FINDER_MIN_FACTOR = 1.0/20.0  # min_lr = BASE_LR * LR_FINDER_MIN_FACTOR
 LR_FINDER_MAX_FACTOR = 8.0       # max_lr = BASE_LR * LR_FINDER_MAX_FACTOR
 # How to pick OneCycle max_lr from best_lr and clip range around BASE_LR
-BEST_LR_MULTIPLIER = 0.55         # max_lr ~ BEST_LR_MULTИПLIER * best_lr
+BEST_LR_MULTIPLIER = 0.7         # max_lr ~ BEST_LR_MULTИПLIER * best_lr
 CLIP_MIN_FACTOR = 0.8            # clip lower bound = BASE_LR * CLIP_MIN_FACTOR
 CLIP_MAX_FACTOR = 8.0            # clip upper bound = BASE_LR * CLIP_MAX_FACTOR
 # OneCycleLR shape parameters
 ONECYCLE_PCT_START = 0.12
 ONECYCLE_DIV_FACTOR = 2.0
-ONECYCLE_FINAL_DIV_FACTOR = 2.2
+ONECYCLE_FINAL_DIV_FACTOR = 3.5
 WEIGHT_DECAY = 3.5e-5
 # Default dropout if no hyper/meta provided
 DEFAULT_DROPOUT = 0.35
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EARLY_STOP_EPOCHS = 80
 NPR_EPS = 1e-12
+
+def load_dataframe(path: Path) -> pd.DataFrame:
+    with open(path) as f: raw = json.load(f)
+    df = pd.DataFrame(list(raw.values()))
+    df["datetime"] = pd.to_datetime(df["x"], unit="s")
+    return df.set_index("datetime").sort_index()
 
 class CandleDataset(Dataset):
     def __init__(self, df: pd.DataFrame):
