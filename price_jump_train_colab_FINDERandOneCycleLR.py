@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-22 10:22
+# Last modified (MSK): 2025-08-22 10:43
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -31,24 +31,25 @@ except Exception:
 
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035
 TRAIN_JSON = Path("candles_10d.json")
-MODEL_PATH = Path("lstm_jump.pt")
+MODEL_PATH = Path("lstm_jump_PRAUC.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
+VALACC_MODEL_PATH = Path("lstm_jump_valacc.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
-VAL_SPLIT, EPOCHS = 0.2, 230
+VAL_SPLIT, EPOCHS = 0.2, 360
 BATCH_SIZE, BASE_LR = 512, 3e-4
 best_lr_default = 2.17e-03
 # Tunable LR Finder params
 LR_FINDER_MIN_FACTOR = 1.0/20.0  # min_lr = BASE_LR * LR_FINDER_MIN_FACTOR
 LR_FINDER_MAX_FACTOR = 8.0       # max_lr = BASE_LR * LR_FINDER_MAX_FACTOR
 # How to pick OneCycle max_lr from best_lr and clip range around BASE_LR
-BEST_LR_MULTIPLIER = 1.5         # max_lr ~ BEST_LR_MULTИПLIER * best_lr
+BEST_LR_MULTIPLIER = 0.55         # max_lr ~ BEST_LR_MULTИПLIER * best_lr
 CLIP_MIN_FACTOR = 0.8            # clip lower bound = BASE_LR * CLIP_MIN_FACTOR
 CLIP_MAX_FACTOR = 8.0            # clip upper bound = BASE_LR * CLIP_MAX_FACTOR
 # OneCycleLR shape parameters
-ONECYCLE_PCT_START = 0.2
+ONECYCLE_PCT_START = 0.12
 ONECYCLE_DIV_FACTOR = 2.0
-ONECYCLE_FINAL_DIV_FACTOR = 7.0
+ONECYCLE_FINAL_DIV_FACTOR = 2.2
 WEIGHT_DECAY = 3.5e-5
 # Default dropout if no hyper/meta provided
 DEFAULT_DROPOUT = 0.35
@@ -205,6 +206,7 @@ ret_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
 
 best_pr_auc = -1.0
 best_pnl_sum = -float('inf')
+best_val_acc = -1.0
 epochs_no_improve = 0
 # Lists to collect per-epoch metrics for post-training plots
 lr_curve = []
@@ -281,8 +283,16 @@ for e in range(1, EPOCHS+1):
                 json.dump({"seq_len":int(SEQ_LEN),"pred_window":int(PRED_WINDOW)}, mf)
         except Exception as ex:
             print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")
-        print(f"✓ Сохранена новая лучшая модель (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
+        print(f"✓ Сохранена новая лучшая модель по PR_AUC (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
     
+    # save best-by- ValAcc
+    if val_acc > best_val_acc + 1e-9:
+        best_val_acc = val_acc
+        VALACC_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
+                    "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, VALACC_MODEL_PATH)
+        print(f"✓ Сохранена новая лучшая модель по ValAcc (ValAcc={best_val_acc:.3f}) в {VALACC_MODEL_PATH.resolve()}")
+
     # save best-by-PnL (using best-threshold PnL sum)
     if pnl_best_sum > best_pnl_sum + 1e-12:
         best_pnl_sum = pnl_best_sum
@@ -290,6 +300,7 @@ for e in range(1, EPOCHS+1):
         PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
                     "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW,"threshold":best_pnl_thr}}, PNL_MODEL_PATH)
+        print(f"✓ Сохранена новая лучшая модель по PnL (pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
 
 # Итоговые сообщения о лучших моделях
 if best_pr_auc > -1.0:
