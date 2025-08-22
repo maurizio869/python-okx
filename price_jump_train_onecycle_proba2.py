@@ -299,35 +299,35 @@ for e in range(1, EPOCHS+1):
 	      f'val_acc {val_acc:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} nPR_AUC {npr_auc:.3f} '
 	      f'PNL@best(thr={last_best_thr:.4f}) {pnl_best_sum*100:.2f}% trades={trades_best} time {(_dt):.1f}s')
 
-    lr_curve.append(curr_lr); pr_auc_curve.append(float(pr_auc)); npr_auc_curve.append(float(npr_auc)); pnl_curve_pct.append(float(pnl_best_sum*100.0)); val_acc_curve.append(float(val_acc))
+	lr_curve.append(curr_lr); pr_auc_curve.append(float(pr_auc)); npr_auc_curve.append(float(npr_auc)); pnl_curve_pct.append(float(pnl_best_sum*100.0)); val_acc_curve.append(float(val_acc))
 
-    if pr_auc > best_pr_auc + 1e-6:
-        best_pr_auc = pr_auc; epochs_no_improve = 0
-        if pr_auc > SAVE_MIN_PR_AUC:
-            MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-            torch.save({"model_state":model.state_dict(),"scaler":None,
-                        "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, MODEL_PATH)
-            try:
-                with open(MODEL_META_PATH,'w',encoding='utf-8') as mf:
-                    json.dump({"seq_len":int(SEQ_LEN),"pred_window":int(PRED_WINDOW)}, mf)
-            except Exception as ex:
-                print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")
-            print(f"✓ Сохранена новая лучшая модель по PR_AUC (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
+	if pr_auc > best_pr_auc + 1e-6:
+		best_pr_auc = pr_auc; epochs_no_improve = 0
+		if pr_auc > SAVE_MIN_PR_AUC:
+			MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+			torch.save({"model_state":model.state_dict(),"scaler":None,
+						"meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, MODEL_PATH)
+			try:
+				with open(MODEL_META_PATH,'w',encoding='utf-8') as mf:
+					json.dump({"seq_len":int(SEQ_LEN),"pred_window":int(PRED_WINDOW)}, mf)
+			except Exception as ex:
+				print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")
+			print(f"✓ Сохранена новая лучшая модель по PR_AUC (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
 
-    if val_acc > best_val_acc + 1e-9 and pr_auc > SAVE_MIN_PR_AUC:
-        best_val_acc = val_acc
-        VALACC_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({"model_state":model.state_dict(),"scaler":None,
-                    "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, VALACC_MODEL_PATH)
-        print(f"✓ Сохранена новая лучшая модель по ValAcc (ValAcc={best_val_acc:.3f}) в {VALACC_MODEL_PATH.resolve()}")
+	if val_acc > best_val_acc + 1e-9 and pr_auc > SAVE_MIN_PR_AUC:
+		best_val_acc = val_acc
+		VALACC_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+		torch.save({"model_state":model.state_dict(),"scaler":None,
+					"meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, VALACC_MODEL_PATH)
+		print(f"✓ Сохранена новая лучшая модель по ValAcc (ValAcc={best_val_acc:.3f}) в {VALACC_MODEL_PATH.resolve()}")
 
-    if pnl_best_sum > best_pnl_sum + 1e-12 and pr_auc > SAVE_MIN_PR_AUC:
-        best_pnl_sum = pnl_best_sum
-        best_pnl_thr = last_best_thr
-        PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({"model_state":model.state_dict(),"scaler":None,
-                    "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW,"threshold":best_pnl_thr}}, PNL_MODEL_PATH)
-        print(f"✓ Сохранена новая лучшая модель по PnL (pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
+	if pnl_best_sum > best_pnl_sum + 1e-12 and pr_auc > SAVE_MIN_PR_AUC:
+		best_pnl_sum = pnl_best_sum
+		best_pnl_thr = last_best_thr
+		PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+		torch.save({"model_state":model.state_dict(),"scaler":None,
+					"meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW,"threshold":best_pnl_thr}}, PNL_MODEL_PATH)
+		print(f"✓ Сохранена новая лучшая модель по PnL (pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
 
 # Post messages
 if best_pr_auc > -1.0:
