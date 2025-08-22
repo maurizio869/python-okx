@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-22 21:17
+# Last modified (MSK): 2025-08-22 21:32
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -240,6 +240,13 @@ entry_idx = val_indices + SEQ_LEN
 entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
 ret_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
+
+# Threshold sweep defaults for in-epoch PnL selection
+thr_min, thr_max, thr_step = 0.15, 0.60, 0.0025
+last_best_thr = 0.565
+best_pnl_thr = last_best_thr
+pnl_best_sum = 0.0
+trades_best = 0
 
 best_pr_auc = -1.0
 best_pnl_sum = -float('inf')
