@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-22 22:28
+# Last modified (MSK): 2025-08-22 22:50
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -435,6 +435,7 @@ try:
     except Exception as ex:
         print(f"! Не удалось сохранить график: {ex}")
     finally:
+        plt.show()
         plt.close(fig)
 except Exception as ex:
     print(f"! Не удалось построить график перебора порога: {ex}")
@@ -502,6 +503,7 @@ try:
     out_name = f'training_curves_{ts}.png'
     plt.savefig(out_name, dpi=120)
     print(f"Saved post-training curves to {Path(out_name).resolve()}")
+    plt.show()
     plt.close()
 except Exception as ex:
     print(f"! Не удалось построить график кривых обучения: {ex}")

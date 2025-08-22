@@ -1,5 +1,5 @@
 # lstm_onecycle_proba.py
-# Last modified (MSK): 2025-08-22 22:28
+# Last modified (MSK): 2025-08-22 22:50
 """Пробный скрипт: OneCycle с предвычислением окон и стандартизацией признаков.
 Основа — актуальный onecycle, но Dataset строит окна заранее:
 - нормализация окна: цены/объём как относительные к первому значению окна
@@ -442,6 +442,7 @@ try:
     out_name = f'threshold_sweep_{ts}.png'
     fig.savefig(out_name, dpi=130)
     print(f"Saved threshold sweep plot to {Path(out_name).resolve()}")
+    plt.show()
     plt.close(fig)
 except Exception as ex:
     print(f"! Не удалось построить график перебора порога: {ex}")
@@ -498,6 +499,7 @@ try:
     out_name = f'training_curves_{ts}.png'
     plt.savefig(out_name, dpi=120)
     print(f"Saved post-training curves to {Path(out_name).resolve()}")
+    plt.show()
     plt.close()
 except Exception as ex:
     print(f"! Не удалось построить график кривых обучения: {ex}")
