@@ -35,14 +35,14 @@ MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
-VAL_SPLIT, EPOCHS = 0.2, 190
+VAL_SPLIT, EPOCHS = 0.2, 230
 BATCH_SIZE, BASE_LR = 512, 3e-4
 best_lr_default = 2.17e-03
 # Tunable LR Finder params
 LR_FINDER_MIN_FACTOR = 1.0/20.0  # min_lr = BASE_LR * LR_FINDER_MIN_FACTOR
 LR_FINDER_MAX_FACTOR = 8.0       # max_lr = BASE_LR * LR_FINDER_MAX_FACTOR
 # How to pick OneCycle max_lr from best_lr and clip range around BASE_LR
-BEST_LR_MULTIPLIER = 1.5         # max_lr ~ BEST_LR_MULTIPLIER * best_lr
+BEST_LR_MULTIPLIER = 1.5         # max_lr ~ BEST_LR_MULTИПLIER * best_lr
 CLIP_MIN_FACTOR = 0.8            # clip lower bound = BASE_LR * CLIP_MIN_FACTOR
 CLIP_MAX_FACTOR = 8.0            # clip upper bound = BASE_LR * CLIP_MAX_FACTOR
 # OneCycleLR shape parameters
@@ -51,9 +51,9 @@ ONECYCLE_DIV_FACTOR = 2.0
 ONECYCLE_FINAL_DIV_FACTOR = 7.0
 WEIGHT_DECAY = 3.5e-5
 # Default dropout if no hyper/meta provided
-DEFAULT_DROPOUT = 0.31
+DEFAULT_DROPOUT = 0.35
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-EARLY_STOP_EPOCHS = 40
+EARLY_STOP_EPOCHS = 80
 
 class CandleDataset(Dataset):
     def __init__(self, df: pd.DataFrame):
