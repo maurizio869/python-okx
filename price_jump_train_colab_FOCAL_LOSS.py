@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-21 14:26
+# Last modified (MSK): 2025-08-22 23:11
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -14,6 +14,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
 import math
+import time
 
 # Hoisted constants
 REDUCE_ON_PLATEAU_START_LR = 4e-4
@@ -214,6 +215,7 @@ best_pnl_thr = PNL_FIXED_THRESHOLD
 epochs_no_improve = 0
 
 for e in range(1, EPOCHS + 1):
+	_t0 = time.time()
     # train
     model.train()
     total_loss = 0.0
@@ -264,12 +266,13 @@ for e in range(1, EPOCHS + 1):
         curr_lr = scheduler.get_last_lr()[0]
     except Exception:
         curr_lr = opt.param_groups[0]['lr']
+    _dt = time.time() - _t0
 
     print(
         f"Epoch {e}/{EPOCHS} lr {curr_lr:.2e} "
         f"loss {total_loss/len(train_ds):.4f} val_acc {(corr/tot_s) if tot_s>0 else 0.0:.3f} "
         f"F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} nPR_AUC {npr_auc:.3f} "
-        f"PNL@{PNL_FIXED_THRESHOLD} {pnl_fixed*100:.2f}% trades={trades_fixed}"
+        f"time {(_dt):.1f}s"
     )
 
     # step scheduler and dynamically expand patience on LR reduction
