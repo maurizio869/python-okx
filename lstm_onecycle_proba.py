@@ -1,5 +1,5 @@
 # lstm_onecycle_proba.py
-# Last modified (MSK): 2025-08-22 21:42
+# Last modified (MSK): 2025-08-22 22:28
 """Пробный скрипт: OneCycle с предвычислением окон и стандартизацией признаков.
 Основа — актуальный onecycle, но Dataset строит окна заранее:
 - нормализация окна: цены/объём как относительные к первому значению окна
@@ -57,6 +57,7 @@ DEFAULT_DROPOUT = 0.35
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EARLY_STOP_EPOCHS = 80
 NPR_EPS = 1e-12
+SAVE_MIN_PR_AUC = 0.58
 
 # Данные
 
@@ -297,7 +298,7 @@ for e in range(1, EPOCHS+1):
 
     # перебор порога на каждой 5-й эпохе (и на первой)
     val_probs_np=np.asarray(val_probs,dtype=np.float32)
-    if e % 5 == 0 or e == 1:
+    if e % 10 == 0 or e == 1:
         best_comp=-np.inf; best_thr=last_best_thr; best_trades=0; best_sum=0.0
         for t in np.arange(thr_min,thr_max+1e-12,thr_step):
             m=(val_probs_np>=t); n=int(m.sum())
@@ -331,30 +332,33 @@ for e in range(1, EPOCHS+1):
 
     if pr_auc > best_pr_auc + 1e-6:
         best_pr_auc = pr_auc; epochs_no_improve = 0
-        MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
-                    "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, MODEL_PATH)
-        try:
-            with open(MODEL_META_PATH,'w',encoding='utf-8') as mf:
-                json.dump({"seq_len":int(SEQ_LEN),"pred_window":int(PRED_WINDOW)}, mf)
-        except Exception as ex:
-            print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")
-        print(f"✓ Сохранена новая лучшая модель по PR_AUC (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
+        if pr_auc > SAVE_MIN_PR_AUC:
+            MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+            torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
+                        "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, MODEL_PATH)
+            try:
+                with open(MODEL_META_PATH,'w',encoding='utf-8') as mf:
+                    json.dump({"seq_len":int(SEQ_LEN),"pred_window":int(PRED_WINDOW)}, mf)
+            except Exception as ex:
+                print(f"! Не удалось записать meta-файл {MODEL_META_PATH}: {ex}")
+            print(f"✓ Сохранена новая лучшая модель по PR_AUC (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
 
     if val_acc > best_val_acc + 1e-9:
         best_val_acc = val_acc
-        VALACC_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
-                    "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, VALACC_MODEL_PATH)
-        print(f"✓ Сохранена новая лучшая модель по ValAcc (ValAcc={best_val_acc:.3f}) в {VALACC_MODEL_PATH.resolve()}")
+        if pr_auc > SAVE_MIN_PR_AUC:
+            VALACC_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+            torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
+                        "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, VALACC_MODEL_PATH)
+            print(f"✓ Сохранена новая лучшая модель по ValAcc (ValAcc={best_val_acc:.3f}) в {VALACC_MODEL_PATH.resolve()}")
 
     if pnl_best_sum > best_pnl_sum + 1e-12:
         best_pnl_sum = pnl_best_sum
         best_pnl_thr = last_best_thr
-        PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-        torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
-                    "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW,"threshold":best_pnl_thr}}, PNL_MODEL_PATH)
-        print(f"✓ Сохранена новая лучшая модель по PnL (pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
+        if pr_auc > SAVE_MIN_PR_AUC:
+            PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
+            torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
+                        "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW,"threshold":best_pnl_thr}}, PNL_MODEL_PATH)
+            print(f"✓ Сохранена новая лучшая модель по PnL (pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
 
 # Пост‑сообщения
 if best_pr_auc > -1.0:
