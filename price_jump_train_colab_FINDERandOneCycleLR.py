@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-22 10:43
+# Last modified (MSK): 2025-08-22 16:53
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -65,14 +65,13 @@ class CandleDataset(Dataset):
         self.lows = df["l"].astype(np.float32).values
         self.volumes = df["v"].astype(np.float32).values
         self.scaler = StandardScaler()
-        # features: v-channel only for simplicity here (can extend)
-        x = (self.closes - self.opens) / (np.maximum(self.opens, 1e-12))
-        x = x.astype(np.float32)
-        # build samples (seq_len -> pred_window future label)
+        # build samples (seq_len -> future label by max close in window)
         self.samples = []
-        for i in range(SEQ_LEN, len(x) - PRED_WINDOW):
-            y = 1 if (self.closes[i + PRED_WINDOW] - self.opens[i]) / max(self.opens[i], 1e-12) >= JUMP_THRESHOLD else 0
-            self.samples.append((i, y))
+        for i in range(SEQ_LEN, len(self.closes) - PRED_WINDOW):
+            current_open = float(self.opens[i])
+            max_close = float(np.max(self.closes[i+1:i+PRED_WINDOW+1]))
+            label = 1 if (max_close / max(current_open, 1e-12) - 1.0) >= JUMP_THRESHOLD else 0
+            self.samples.append((i, label))
 
     def __len__(self):
         return len(self.samples)
@@ -164,38 +163,67 @@ lossf = nn.CrossEntropyLoss(weight=class_weights)
 # LR Finder: 1 эпоха по train_loader, lr от BASE_LR/20 до BASE_LR*8
 print("LR Finder: старт…")
 min_lr, max_lr = BASE_LR*LR_FINDER_MIN_FACTOR, BASE_LR*LR_FINDER_MAX_FACTOR
+finder_loader = DataLoader(train_ds, BATCH_SIZE, shuffle=False)
+num_steps = max(1, len(finder_loader))
+lr_mult = (max_lr/min_lr) ** (1/num_steps)
+print(f"LR Finder params: BASE_LR={BASE_LR:.2e}, min_lr={min_lr:.2e}, max_lr={max_lr:.2e}, steps={num_steps}, lr_mult≈{lr_mult:.6f}")
+for pg in opt.param_groups: pg['lr'] = min_lr
+best_loss = float('inf'); best_lr = BASE_LR
+model.eval(); step_id=0
+for xb, yb in finder_loader:
+    xb, yb = xb.to(DEVICE), yb.to(DEVICE)
+    opt.zero_grad(); logits = model(xb); loss = lossf(logits, yb)
+    loss.backward(); opt.step()
+    if loss.item() < best_loss:
+        best_loss = loss.item(); best_lr = opt.param_groups[0]['lr']
+    for pg in opt.param_groups: pg['lr'] *= lr_mult
+    step_id += 1
+print(f"LR Finder: best_lr≈{best_lr:.2e}, best_loss={best_loss:.4f}")
+# OneCycleLR на весь ран: max_lr = BEST_LR_MULTIPLIER×best_lr (clipped)
+max_lr_use = float(np.clip(BEST_LR_MULTIPLIER*best_lr, BASE_LR*CLIP_MIN_FACTOR, BASE_LR*CLIP_MAX_FACTOR))
+opt = torch.optim.Adam(model.parameters(), BASE_LR, weight_decay=WEIGHT_DECAY)
 sched = torch.optim.lr_scheduler.OneCycleLR(
-    opt,
-    max_lr=max(min(best_lr_default*BEST_LR_MULTIPLIER, BASE_LR*CLIP_MAX_FACTOR), BASE_LR*CLIP_MIN_FACTOR),
-    epochs=EPOCHS,
-    steps_per_epoch=max(1, len(train_loader)),
-    pct_start=ONECYCLE_PCT_START,
-    div_factor=ONECYCLE_DIV_FACTOR,
-    final_div_factor=ONECYCLE_FINAL_DIV_FACTOR,
+    opt, max_lr=max_lr_use, epochs=EPOCHS, steps_per_epoch=max(1, len(train_loader)),
+    pct_start=ONECYCLE_PCT_START, div_factor=ONECYCLE_DIV_FACTOR, final_div_factor=ONECYCLE_FINAL_DIV_FACTOR
 )
-
-# плановая кривая LR
+# Плановая кривая LR по эпохам
 try:
-    lrs = np.linspace(1, EPOCHS, EPOCHS)
-    plt.figure(figsize=(7,4))
-    plt.plot(lrs, [None if i==0 else None for i in range(len(lrs))])
-    plt.title('OneCycle LR planned shape')
-    plt.xlabel('Epoch')
-    plt.ylabel('LR (relative)')
-    def _sci_fmt(y, _=None):
-        s = f"{y:.0e}"
-        return s.replace('e-0','e-').replace('e+0','e+')
+    tmp_opt = torch.optim.Adam(model.parameters(), BASE_LR, weight_decay=WEIGHT_DECAY)
+    tmp_sched = torch.optim.lr_scheduler.OneCycleLR(
+        tmp_opt, max_lr=max_lr_use, epochs=EPOCHS, steps_per_epoch=max(1, len(train_loader)),
+        pct_start=ONECYCLE_PCT_START, div_factor=ONECYCLE_DIV_FACTOR, final_div_factor=ONECYCLE_FINAL_DIV_FACTOR
+    )
+    planned_lr = []
+    for _ep in range(EPOCHS):
+        for _ in range(max(1, len(train_loader))):
+            tmp_sched.step()
+        planned_lr.append(tmp_opt.param_groups[0]['lr'])
+    plt.figure(figsize=(6,3))
+    plt.plot(range(1, len(planned_lr)+1), planned_lr, label='Planned LR')
+    plt.xlabel('Epoch'); plt.ylabel('Learning Rate'); plt.title('Planned OneCycle LR by epoch')
+    plt.grid(True, alpha=0.3); plt.tight_layout()
+    def _sci_fmt(y, pos):
+        s = f"{y:.0e}"; return s.replace('e-0','e-').replace('e+0','e+')
     plt.gca().yaxis.set_major_formatter(FuncFormatter(_sci_fmt))
-    plt.savefig('onecycle_lr_curve.png', dpi=120)
-    print("Saved LR curve to onecycle_lr_curve.png (planned)")
+    ts = None
+    try:
+        from datetime import datetime
+        import pytz
+        msk = pytz.timezone('Europe/Moscow')
+        ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
+    except Exception:
+        pass
+    out_name = f"onecycle_lr_curve_{ts}.png" if ts else "onecycle_lr_curve.png"
+    plt.savefig(out_name, dpi=120)
+    print(f"Saved LR curve to {Path(out_name).resolve()}")
     try:
         from IPython.display import Image, display
-        display(Image('onecycle_lr_curve.png'))
+        display(Image(out_name))
     except Exception:
         pass
     plt.close()
 except Exception as ex:
-    print(f"! Не удалось построить/сохранить дообучающий график LR: {ex}")
+    print(f"! Не удалось построить/сохранить план LR: {ex}")
 
 # PnL@0.565 support
 val_indices = np.asarray(val_ds.indices, dtype=np.int64)
@@ -450,11 +478,17 @@ try:
                    bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]')
     plt.legend(loc='best'); plt.grid(True, alpha=0.3)
-    plt.tight_layout(); plt.savefig('curves.png', dpi=130)
-    print("Saved training curves to curves.png")
+    plt.tight_layout();
+    from datetime import datetime
+    import pytz
+    msk = pytz.timezone('Europe/Moscow')
+    ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
+    out_name = f'training_curves_{ts}.png'
+    plt.savefig(out_name, dpi=120)
+    print(f"Saved post-training curves to {Path(out_name).resolve()}")
     try:
         from IPython.display import Image, display
-        display(Image('curves.png'))
+        display(Image(out_name))
     except Exception:
         pass
 except Exception as ex:
