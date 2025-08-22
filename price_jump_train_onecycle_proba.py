@@ -1,5 +1,7 @@
-# lstm_onecycle_proba.py
-# Last modified (MSK): 2025-08-22 23:35
+# price_jump_train_onecycle_proba.py
+# Last modified (MSK): 2025-08-22 23:43
+# price_jump_train_onecycle_proba.py
+# Last modified (MSK): 2025-08-22 23:43
 """Пробный скрипт: OneCycle с предвычислением окон и стандартизацией признаков.
 Основа — актуальный onecycle, но Dataset строит окна заранее:
 - нормализация окна: цены/объём как относительные к первому значению окна

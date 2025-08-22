@@ -1,5 +1,7 @@
-# lstm_onecycle_proba2.py
-# Last modified (MSK): 2025-08-22 23:35
+# price_jump_train_onecycle_proba2.py
+# Last modified (MSK): 2025-08-22 23:43
+# price_jump_train_onecycle_proba2.py
+# Last modified (MSK): 2025-08-22 23:43
 """Proba2: OneCycle с предвычислением окон в Dataset (без StandardScaler).
 Окна нормализуются относительно первой свечи по open/volume, предвычисляются один раз.
 Остальная логика совпадает с основным onecycle.
