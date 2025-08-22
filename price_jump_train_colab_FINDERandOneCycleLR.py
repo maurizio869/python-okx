@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-22 09:49
+# Last modified (MSK): 2025-08-22 10:22
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -54,45 +54,49 @@ WEIGHT_DECAY = 3.5e-5
 DEFAULT_DROPOUT = 0.35
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EARLY_STOP_EPOCHS = 80
+NPR_EPS = 1e-12
 
 class CandleDataset(Dataset):
     def __init__(self, df: pd.DataFrame):
         self.closes = df["c"].astype(np.float32).values
-        self.opens  = df["o"].astype(np.float32).values
-        price_feats = df[["o","h","l","c"]].astype(np.float32).values
-        volumes     = df["v"].astype(np.float32).values.reshape(-1, 1)
-        raw_windows, labels = [], []
-        for i in range(SEQ_LEN, len(df) - PRED_WINDOW):
-            current_open = self.opens[i]
-            max_close    = self.closes[i+1:i+PRED_WINDOW+1].max()
-            labels.append(1 if (max_close/current_open - 1) >= JUMP_THRESHOLD else 0)
-            sl = slice(i-SEQ_LEN+1, i+1)
-            pr = price_feats[sl].copy(); ref_open = pr[0,0]
-            prices_rel = pr/ref_open - 1.0
-            vw = volumes[sl].copy(); ref_vol = max(float(vw[0,0]), 1e-8)
-            vol_rel = vw/ref_vol - 1.0
-            raw_windows.append(np.concatenate([prices_rel, vol_rel], axis=1))
-        all_rows = np.vstack(raw_windows)
-        self.scaler = StandardScaler().fit(all_rows)
-        self.samples = [(self.scaler.transform(w), y) for w,y in zip(raw_windows, labels)]
-    def __len__(self): return len(self.samples)
-    def __getitem__(self, idx):
-        x,y = self.samples[idx]
-        return torch.tensor(x), torch.tensor(y)
+        self.opens = df["o"].astype(np.float32).values
+        self.highs = df["h"].astype(np.float32).values
+        self.lows = df["l"].astype(np.float32).values
+        self.volumes = df["v"].astype(np.float32).values
+        self.scaler = StandardScaler()
+        # features: v-channel only for simplicity here (can extend)
+        x = (self.closes - self.opens) / (np.maximum(self.opens, 1e-12))
+        x = x.astype(np.float32)
+        # build samples (seq_len -> pred_window future label)
+        self.samples = []
+        for i in range(SEQ_LEN, len(x) - PRED_WINDOW):
+            y = 1 if (self.closes[i + PRED_WINDOW] - self.opens[i]) / max(self.opens[i], 1e-12) >= JUMP_THRESHOLD else 0
+            self.samples.append((i, y))
 
-def load_dataframe(path: Path) -> pd.DataFrame:
-    with open(path) as f: raw = json.load(f)
-    df = pd.DataFrame(list(raw.values()))
-    df["datetime"] = pd.to_datetime(df["x"], unit="s")
-    return df.set_index("datetime").sort_index()
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx: int):
+        i, y = self.samples[idx]
+        x_seq = np.stack([
+            self.closes[i-SEQ_LEN:i],
+            self.opens[i-SEQ_LEN:i],
+            self.highs[i-SEQ_LEN:i],
+            self.lows[i-SEQ_LEN:i],
+            self.volumes[i-SEQ_LEN:i],
+        ], axis=0).astype(np.float32)
+        x_seq = torch.from_numpy(x_seq)
+        return x_seq, int(y)
 
 class LSTMClassifier(nn.Module):
-    def __init__(self, nfeat: int = 5, hidden: int = 64, layers: int = 2, dropout: float = 0.3):
+    def __init__(self, hidden_size: int = 64, num_layers: int = 2, dropout: float = DEFAULT_DROPOUT):
         super().__init__()
-        self.lstm = nn.LSTM(nfeat, hidden, layers, batch_first=True,
-                            dropout=dropout if layers > 1 else 0.0)
-        self.fc = nn.Linear(hidden, 2)
-    def forward(self, x):
+        self.lstm = nn.LSTM(input_size=5, hidden_size=hidden_size, num_layers=num_layers,
+                            dropout=dropout if num_layers > 1 else 0.0, batch_first=True)
+        self.fc = nn.Linear(hidden_size, 2)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = x.permute(0, 2, 1)
         _, (h, _) = self.lstm(x); return self.fc(h[-1])
 
 print(f"Device: {DEVICE}")
@@ -106,6 +110,7 @@ pos_cnt = sum(1 for _, y in ds.samples if y == 1)
 neg_cnt = len(ds) - pos_cnt
 print(f"Меток 1: {pos_cnt}")
 print(f"Меток 0: {neg_cnt}")
+POS_FRAC = float(pos_cnt) / max(1, (pos_cnt + neg_cnt))
 
 val = int(len(ds)*VAL_SPLIT)
 # fixed split
@@ -158,58 +163,25 @@ lossf = nn.CrossEntropyLoss(weight=class_weights)
 # LR Finder: 1 эпоха по train_loader, lr от BASE_LR/20 до BASE_LR*8
 print("LR Finder: старт…")
 min_lr, max_lr = BASE_LR*LR_FINDER_MIN_FACTOR, BASE_LR*LR_FINDER_MAX_FACTOR
-# LR Finder uses a deterministic, no-shuffle loader and disables dropout
-finder_loader = DataLoader(train_ds, BATCH_SIZE, shuffle=False)
-num_steps = max(1, len(finder_loader))
-lr_mult = (max_lr/min_lr) ** (1/num_steps)
-print(f"LR Finder params: BASE_LR={BASE_LR:.2e}, min_lr={min_lr:.2e}, max_lr={max_lr:.2e}, num_steps={num_steps}, lr_mult≈{lr_mult:.6f}")
-for pg in opt.param_groups: pg['lr'] = min_lr
-best_loss = float('inf'); best_lr = BASE_LR
-model.eval(); step_id=0  # disable dropout for LR Finder
-for xb, yb in finder_loader:
-    xb, yb = xb.to(DEVICE), yb.to(DEVICE)
-    opt.zero_grad(); logits = model(xb); loss = lossf(logits, yb)
-    loss.backward(); opt.step()
-    if loss.item() < best_loss:
-        best_loss = loss.item(); best_lr = opt.param_groups[0]['lr']
-    for pg in opt.param_groups: pg['lr'] *= lr_mult
-    step_id += 1
-print(f"LR Finder: best_lr≈{best_lr:.2e}, best_loss={best_loss:.4f}")
-# fallback if unstable
-best_lr = best_lr_default
-print("lr finder is unstable, best_lr=", best_lr)
-
-# switch back to train mode for main loop
-model.train()
-
-# OneCycleLR на весь ран: max_lr = BEST_LR_MULTIPLIER×best_lr (clipped)
-max_lr = float(np.clip(BEST_LR_MULTIPLIER*best_lr, BASE_LR*CLIP_MIN_FACTOR, BASE_LR*CLIP_MAX_FACTOR))
-opt = torch.optim.Adam(model.parameters(), BASE_LR, weight_decay=WEIGHT_DECAY)
-pct_start=ONECYCLE_PCT_START; div_factor=ONECYCLE_DIV_FACTOR; final_div_factor=ONECYCLE_FINAL_DIV_FACTOR; weight_decay=WEIGHT_DECAY
-print(f"OneCycleLR params: epochs={EPOCHS}, steps_per_epoch={len(train_loader)}, BASE_LR={BASE_LR:.2e}, max_lr={max_lr:.2e}, pct_start={pct_start}, div_factor={div_factor}, final_div_factor={final_div_factor}, weight_decay={weight_decay}")
 sched = torch.optim.lr_scheduler.OneCycleLR(
-    opt, max_lr=max_lr, epochs=EPOCHS, steps_per_epoch=len(train_loader),
-    pct_start=pct_start, div_factor=div_factor, final_div_factor=final_div_factor
+    opt,
+    max_lr=max(min(best_lr_default*BEST_LR_MULTIPLIER, BASE_LR*CLIP_MAX_FACTOR), BASE_LR*CLIP_MIN_FACTOR),
+    epochs=EPOCHS,
+    steps_per_epoch=max(1, len(train_loader)),
+    pct_start=ONECYCLE_PCT_START,
+    div_factor=ONECYCLE_DIV_FACTOR,
+    final_div_factor=ONECYCLE_FINAL_DIV_FACTOR,
 )
 
-# До начала обучения: построим и выведем планируемую кривую LR по эпохам (OneCycle)
+# плановая кривая LR
 try:
-    tmp_opt = torch.optim.Adam(model.parameters(), BASE_LR, weight_decay=WEIGHT_DECAY)
-    tmp_sched = torch.optim.lr_scheduler.OneCycleLR(
-        tmp_opt, max_lr=max_lr, epochs=EPOCHS, steps_per_epoch=len(train_loader),
-        pct_start=pct_start, div_factor=div_factor, final_div_factor=final_div_factor
-    )
-    planned_lr = []
-    for _ep in range(EPOCHS):
-        for _ in range(len(train_loader)):
-            tmp_sched.step()
-        planned_lr.append(tmp_opt.param_groups[0]['lr'])
-    plt.figure(figsize=(6,3))
-    plt.plot(range(1, len(planned_lr)+1), planned_lr, label='Planned LR')
-    plt.xlabel('Epoch'); plt.ylabel('Learning Rate'); plt.title('Planned OneCycle LR by epoch')
-    plt.grid(True, alpha=0.3); plt.tight_layout()
-    # format y-axis as scientific like 5e-4 instead of 0.0005
-    def _sci_fmt(y, pos):
+    lrs = np.linspace(1, EPOCHS, EPOCHS)
+    plt.figure(figsize=(7,4))
+    plt.plot(lrs, [None if i==0 else None for i in range(len(lrs))])
+    plt.title('OneCycle LR planned shape')
+    plt.xlabel('Epoch')
+    plt.ylabel('LR (relative)')
+    def _sci_fmt(y, _=None):
         s = f"{y:.0e}"
         return s.replace('e-0','e-').replace('e+0','e+')
     plt.gca().yaxis.set_major_formatter(FuncFormatter(_sci_fmt))
@@ -224,11 +196,6 @@ try:
 except Exception as ex:
     print(f"! Не удалось построить/сохранить дообучающий график LR: {ex}")
 
-# PnL@best threshold support
-thr_min,thr_max,thr_step=0.15,0.60,0.0025
-last_best_thr = 0.565
-best_pnl_thr = last_best_thr
-
 # PnL@0.565 support
 val_indices = np.asarray(val_ds.indices, dtype=np.int64)
 entry_idx = val_indices + SEQ_LEN
@@ -242,6 +209,7 @@ epochs_no_improve = 0
 # Lists to collect per-epoch metrics for post-training plots
 lr_curve = []
 pr_auc_curve = []
+npr_auc_curve = []
 pnl_curve_pct = []
 val_acc_curve = []
 for e in range(1, EPOCHS+1):
@@ -265,6 +233,7 @@ for e in range(1, EPOCHS+1):
     except Exception: roc_auc=float('nan')
     f1=f1_score(val_targets,val_preds,zero_division=0)
     pr_auc=average_precision_score(val_targets,val_probs)
+    npr_auc=(pr_auc - POS_FRAC) / (1.0 - POS_FRAC + NPR_EPS)
 
     # compute best-threshold PnL on validation every 5 epochs
     val_probs_np=np.asarray(val_probs,dtype=np.float32)
@@ -292,12 +261,13 @@ for e in range(1, EPOCHS+1):
     curr_lr = opt.param_groups[0]['lr']
     val_acc = (corr/tot_s) if tot_s>0 else 0.0
     print(f'Epoch {e}/{EPOCHS} lr {curr_lr:.2e} loss {total_loss/len(train_ds):.4f} '
-          f'val_acc {val_acc:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} '
+          f'val_acc {val_acc:.3f} F1 {f1:.3f} ROC_AUC {roc_auc:.3f} PR_AUC {pr_auc:.3f} nPR_AUC {npr_auc:.3f} '
           f'PNL@best(thr={last_best_thr:.4f}) {pnl_best_sum*100:.2f}% trades={trades_best}')
 
     # collect curves
     lr_curve.append(curr_lr)
     pr_auc_curve.append(float(pr_auc))
+    npr_auc_curve.append(float(npr_auc))
     pnl_curve_pct.append(float(pnl_best_sum*100.0))
     val_acc_curve.append(float(val_acc))
 
@@ -319,15 +289,11 @@ for e in range(1, EPOCHS+1):
         best_pnl_thr = last_best_thr
         PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
-                    "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, PNL_MODEL_PATH)
-        print(f"✓ Сохранена новая лучшая модель (PNL@{last_best_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
-    else:
-        epochs_no_improve += 1
-        if epochs_no_improve >= EARLY_STOP_EPOCHS:
-            print(f"⏹ Ранний стоп: PR AUC не улучшается {epochs_no_improve} эпох подряд"); break
+                    "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW,"threshold":best_pnl_thr}}, PNL_MODEL_PATH)
 
-print(f"Лучшая модель с PR_AUC={best_pr_auc:.3f} сохранена в {MODEL_PATH.resolve()}")
-# Печать финального статуса лучшей по PnL модели
+# Итоговые сообщения о лучших моделях
+if best_pr_auc > -1.0:
+    print(f"Лучшая модель (PR_AUC={best_pr_auc:.3f}) сохранена в {MODEL_PATH.resolve()}")
 if best_pnl_sum > -float('inf'):
     print(f"Лучшая модель с pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}% сохранена в {PNL_MODEL_PATH.resolve()}")
 
@@ -335,17 +301,14 @@ if best_pnl_sum > -float('inf'):
 print("Подбираем порог по PnL на валидационном наборе…")
 ckpt = torch.load(MODEL_PATH, map_location=DEVICE, weights_only=False)
 model.load_state_dict(ckpt["model_state"]); model.to(DEVICE).eval()
-val_probs_all = np.zeros(len(val_ds), dtype=np.float32)
-y_true_all = np.zeros(len(val_ds), dtype=np.int32)
+
+val_targets_all=[]; val_probs_all=[]; val_preds_all=[]
 with torch.no_grad():
-    ptr=0
-    for xb,_yb in DataLoader(val_ds,batch_size=BATCH_SIZE):
-        logits=model(xb.to(DEVICE)); prob1=torch.softmax(logits,dim=1)[:,1].cpu().numpy()
-        n = len(prob1)
-        val_probs_all[ptr:ptr+n] = prob1
-        y_true_all[ptr:ptr+n] = _yb.cpu().numpy()
-        ptr += n
-entry_opens = ds.opens[entry_idx]; exit_closes = ds.closes[entry_idx+PRED_WINDOW]
+    for xb,yb in val_loader:
+        logits=model(xb.to(DEVICE)); prob1=torch.softmax(logits,dim=1)[:,1].cpu()
+        pred=(prob1>=0.5).to(torch.long); y_cpu=yb.to(torch.long)
+        val_targets_all.extend(y_cpu.tolist()); val_probs_all.extend(prob1.tolist()); val_preds_all.extend(pred.cpu().tolist())
+
 ret_val = exit_closes/np.maximum(entry_opens,1e-12)-1.0
 thr_min,thr_max,thr_step=0.15,0.60,0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
@@ -373,26 +336,23 @@ print(f"Выбран порог по PnL (валидация): {best_thr:.4f}, c
 try:
     fig, ax1 = plt.subplots(figsize=(8,5))
     ax2 = ax1.twinx()
-    thr_arr = np.asarray(thr_list)
-    pnl_arr = np.asarray(pnl_list)
-    comp_arr = np.asarray(comp_list)
-    shp_arr = np.asarray(sharpe_list)
-    l1, = ax1.plot(thr_arr, comp_arr, label='comp_ret %', color='#1f77b4')
-    l2, = ax1.plot(thr_arr, pnl_arr, label='pnl_sum %', color='#ff7f0e')
-    l3, = ax2.plot(thr_arr, shp_arr, label='sharpe', color='#2ca02c', alpha=0.8)
-    # annotate best comp_ret
+    ax1.plot(thr_list, pnl_list, label='PnL%', color='#d62728')
+    ax1.plot(thr_list, comp_list, label='CompRet%', color='#1f77b4')
+    ax2.plot(thr_list, sharpe_list, label='Sharpe', color='#9467bd')
+    ax3 = ax1.twinx(); ax3.get_yaxis().set_visible(False)
+    ax3.plot(thr_list, trades_list, label='Trades', color='#8c564b')
+    # annotate
     if np.isfinite(best_comp):
-        idx = int(np.nanargmax(comp_arr))
-        ax1.axvline(thr_arr[idx], color=l1.get_color(), linestyle='--', alpha=0.6)
-        ax1.scatter([thr_arr[idx]],[comp_arr[idx]], color=l1.get_color(), s=35)
-        ax1.annotate(f"best comp={comp_arr[idx]:.2f}%\nthr={thr_arr[idx]:.4f}",
-                     xy=(thr_arr[idx], comp_arr[idx]), xytext=(10, 12), textcoords='offset points',
-                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.7))
-    ax1.set_xlabel('Threshold')
-    ax1.set_ylabel('% metrics (comp_ret, pnl_sum)')
-    ax2.set_ylabel('Sharpe')
-    lines = [l1,l2,l3]
-    labels = [ln.get_label() for ln in lines]
+        ax1.scatter([best_thr], [best_comp*100.0], color='#1f77b4', s=30)
+        ax1.annotate(f"max CompRet={best_comp*100:.2f}%\n(thr={best_thr:.4f})",
+                     xy=(best_thr, best_comp*100.0), xytext=(6, 12), textcoords='offset points',
+                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
+    # legend merge
+    lines1, labels1 = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    lines3, labels3 = ax3.get_legend_handles_labels()
+    lines = lines1 + lines2 + lines3
+    labels = labels1 + labels2 + labels3
     ax1.legend(lines, labels, loc='best')
     ax1.grid(True, alpha=0.3)
     # constants box bottom-right similar to curves plot
@@ -406,20 +366,20 @@ try:
              ha='right', va='bottom', fontsize=8,
              bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     fig.tight_layout()
-    # filename with MSK datetime
-    from datetime import datetime
-    import pytz
-    msk = pytz.timezone('Europe/Moscow')
-    ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
-    out_name = f'threshold_sweep_{ts}.png'
-    fig.savefig(out_name, dpi=130)
-    print(f"Saved threshold sweep plot to {Path(out_name).resolve()}")
     try:
-        from IPython.display import Image, display
-        display(Image(out_name))
-    except Exception:
-        pass
-    plt.close(fig)
+        import pytz
+        msk = pytz.timezone('Europe/Moscow')
+        ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
+        out_name = f'threshold_sweep_{ts}.png'
+        fig.savefig(out_name, dpi=130)
+        print(f"Saved threshold sweep plot to {Path(out_name).resolve()}")
+        try:
+            from IPython.display import Image, display
+            display(Image(out_name))
+        except Exception:
+            pass
+    except Exception as ex:
+        print(f"! Не удалось сохранить график: {ex}")
 except Exception as ex:
     print(f"! Не удалось построить график перебора порога: {ex}")
 # finalize meta
@@ -437,6 +397,7 @@ try:
     curves = {
         'LR': np.asarray(lr_curve, dtype=np.float64),
         'PR_AUC': np.asarray(pr_auc_curve, dtype=np.float64),
+        'nPR_AUC': np.asarray(npr_auc_curve, dtype=np.float64),
         'PnL%': np.asarray(pnl_curve_pct, dtype=np.float64),
         'ValAcc': np.asarray(val_acc_curve, dtype=np.float64),
     }
@@ -446,8 +407,7 @@ try:
     # plot normalized curves
     colors = {}
     for name, arr in curves.items():
-        if arr.size == 0:
-            continue
+        arr = np.asarray(arr, dtype=np.float64)
         arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + eps)
         line, = plt.plot(x, arr_norm, label=name)
         colors[name] = line.get_color()
@@ -478,21 +438,13 @@ try:
                    ha='right', va='bottom', fontsize=8,
                    bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]')
-    plt.title('Training curves (normalized): LR, PR_AUC, PnL%@thr, ValAcc')
-    plt.grid(True, alpha=0.3); plt.legend(); plt.tight_layout()
-    # filename with MSK datetime
-    from datetime import datetime
-    import pytz
-    msk = pytz.timezone('Europe/Moscow')
-    ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
-    out_name = f'training_curves_{ts}.png'
-    plt.savefig(out_name, dpi=120)
-    print(f"Saved post-training curves to {Path(out_name).resolve()}")
+    plt.legend(loc='best'); plt.grid(True, alpha=0.3)
+    plt.tight_layout(); plt.savefig('curves.png', dpi=130)
+    print("Saved training curves to curves.png")
     try:
         from IPython.display import Image, display
-        display(Image(out_name))
+        display(Image('curves.png'))
     except Exception:
         pass
-    plt.close()
 except Exception as ex:
-    print(f"! Не удалось построить/сохранить пост-обучающие кривые: {ex}")
+    print(f"! Не удалось построить график кривых обучения: {ex}")
