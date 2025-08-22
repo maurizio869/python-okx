@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-22 16:53
+# Last modified (MSK): 2025-08-22 17:12
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -179,7 +179,10 @@ for xb, yb in finder_loader:
     for pg in opt.param_groups: pg['lr'] *= lr_mult
     step_id += 1
 print(f"LR Finder: best_lr≈{best_lr:.2e}, best_loss={best_loss:.4f}")
-# OneCycleLR на весь ран: max_lr = BEST_LR_MULTIPLIER×best_lr (clipped)
+# fallback if unstable
+best_lr = best_lr_default
+print("lr finder is unstable, best_lr=", best_lr)
+# OneCycleLR на весь ран: max_lr = BEST_LR_MULTИПLIER×best_lr (clipped)
 max_lr_use = float(np.clip(BEST_LR_MULTIPLIER*best_lr, BASE_LR*CLIP_MIN_FACTOR, BASE_LR*CLIP_MAX_FACTOR))
 opt = torch.optim.Adam(model.parameters(), BASE_LR, weight_decay=WEIGHT_DECAY)
 sched = torch.optim.lr_scheduler.OneCycleLR(
