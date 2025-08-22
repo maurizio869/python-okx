@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-22 21:09
+# Last modified (MSK): 2025-08-22 21:17
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -442,7 +442,6 @@ try:
     curves = {
         'LR': np.asarray(lr_curve, dtype=np.float64),
         'PR_AUC': np.asarray(pr_auc_curve, dtype=np.float64),
-        'nPR_AUC': np.asarray(npr_auc_curve, dtype=np.float64),
         'PnL%': np.asarray(pnl_curve_pct, dtype=np.float64),
         'ValAcc': np.asarray(val_acc_curve, dtype=np.float64),
     }
