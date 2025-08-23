@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-23 13:52
+# Last modified (MSK): 2025-08-23 14:20
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -54,6 +54,14 @@ SAVE_MIN_PR_AUC = 0.60
 
 # Focal Loss params
 FOCAL_GAMMA = 1.5
+
+# Autotune parameters (triggered once when PR_AUC crosses threshold)
+AUTOTUNE_PRAUC_THRESHOLD = 0.601
+AUTOTUNE_GAMMA = 1.4
+AUTOTUNE_WD_MULT = 1.5
+AUTOTUNE_DROPOUT_DELTA = 0.03
+AUTOTUNE_DROPOUT_MIN = 0.0
+AUTOTUNE_DROPOUT_MAX = 0.7
 
 def load_dataframe(path: Path) -> pd.DataFrame:
     with open(path) as f: raw = json.load(f)
@@ -250,14 +258,14 @@ for e in range(1, EPOCHS+1):
     npr_auc=(pr_auc - POS_FRAC) / (1.0 - POS_FRAC + NPR_EPS)
 
     # autotune on threshold hit
-    if (not autotune_done) and (pr_auc >= 0.615):
-        lossf.gamma = 1.4
+    if (not autotune_done) and (pr_auc >= AUTOTUNE_PRAUC_THRESHOLD):
+        lossf.gamma = AUTOTUNE_GAMMA
         for pg in opt.param_groups:
-            pg['weight_decay'] *= 1.5
-        new_p = min(max(model.post_dropout.p + 0.03, 0.0), 0.7)
+            pg['weight_decay'] *= AUTOTUNE_WD_MULT
+        new_p = min(max(model.post_dropout.p + AUTOTUNE_DROPOUT_DELTA, AUTOTUNE_DROPOUT_MIN), AUTOTUNE_DROPOUT_MAX)
         model.post_dropout.p = new_p
         wd_now = opt.param_groups[0]['weight_decay']
-        print(f"↻ Auto-tune: PR_AUC≥0.615 → gamma={lossf.gamma:.2f}, weight_decay={wd_now:.2e}, dropout={new_p:.2f}")
+        print(f"↻ Auto-tune: PR_AUC≥{AUTOTUNE_PRAUC_THRESHOLD:.3f} → gamma={lossf.gamma:.2f}, weight_decay={wd_now:.2e}, dropout={new_p:.2f}")
         autotune_done = True
 
     # threshold sweep every 10 epochs
