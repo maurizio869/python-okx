@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-23 13:17
+# Last modified (MSK): 2025-08-23 13:18
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -53,7 +53,7 @@ NPR_EPS = 1e-12
 SAVE_MIN_PR_AUC = 0.58
 
 # Focal Loss params
-FOCAL_GAMMA = 2.0
+FOCAL_GAMMA = 1.5
 
 def load_dataframe(path: Path) -> pd.DataFrame:
     with open(path) as f: raw = json.load(f)
