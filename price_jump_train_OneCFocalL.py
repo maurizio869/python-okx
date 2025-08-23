@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-23 13:45
+# Last modified (MSK): 2025-08-23 13:52
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -280,17 +280,20 @@ for e in range(1, EPOCHS+1):
             MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
             torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
                         "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, MODEL_PATH)
+            print(f"✓ Сохранена новая лучшая модель по PR_AUC (PR_AUC={best_pr_auc:.3f}) в {MODEL_PATH.resolve()}")
     if val_acc > best_val_acc + 1e-9 and pr_auc > SAVE_MIN_PR_AUC:
         best_val_acc = val_acc
         VALACC_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
                     "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW}}, VALACC_MODEL_PATH)
+        print(f"✓ Сохранена новая лучшая модель по ValAcc (ValAcc={best_val_acc:.3f}) в {VALACC_MODEL_PATH.resolve()}")
     if pnl_best_sum > best_pnl_sum + 1e-12 and pr_auc > SAVE_MIN_PR_AUC:
         best_pnl_sum = pnl_best_sum
         best_pnl_thr = last_best_thr
         PNL_MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
         torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
                     "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW,"threshold":best_pnl_thr}}, PNL_MODEL_PATH)
+        print(f"✓ Сохранена новая лучшая модель по PnL (pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
 
 # Post messages
 if best_pr_auc > -1.0:
