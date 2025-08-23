@@ -92,11 +92,12 @@ class LSTMClassifier(nn.Module):
         super().__init__()
         self.lstm = nn.LSTM(input_size=5, hidden_size=hidden_size, num_layers=num_layers,
                             dropout=dropout if num_layers > 1 else 0.0, batch_first=True)
+        self.post_dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(hidden_size, 2)
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.permute(0, 2, 1)
         _, (h, _) = self.lstm(x)
-        return self.fc(h[-1])
+        return self.fc(self.post_dropout(h[-1]))
 
 class FocalLossWeightedCE(nn.Module):
     def __init__(self, gamma: float = FOCAL_GAMMA, class_weights: torch.Tensor | None = None):
@@ -223,6 +224,7 @@ best_pr_auc = -1.0; best_pnl_sum = -float('inf'); best_val_acc = -1.0
 
 # Buffers for post-training curves
 lr_curve = []; pr_auc_curve = []; npr_auc_curve = []; pnl_curve_pct = []; val_acc_curve = []
+autotune_done = False
 
 for e in range(1, EPOCHS+1):
     t0 = time.time()
@@ -246,6 +248,17 @@ for e in range(1, EPOCHS+1):
     f1=f1_score(val_targets,val_preds,zero_division=0)
     pr_auc=average_precision_score(val_targets,val_probs)
     npr_auc=(pr_auc - POS_FRAC) / (1.0 - POS_FRAC + NPR_EPS)
+
+    # autotune on threshold hit
+    if (not autotune_done) and (pr_auc >= 0.615):
+        lossf.gamma = 1.4
+        for pg in opt.param_groups:
+            pg['weight_decay'] *= 1.5
+        new_p = min(max(model.post_dropout.p + 0.03, 0.0), 0.7)
+        model.post_dropout.p = new_p
+        wd_now = opt.param_groups[0]['weight_decay']
+        print(f"↻ Auto-tune: PR_AUC≥0.615 → gamma={lossf.gamma:.2f}, weight_decay={wd_now:.2e}, dropout={new_p:.2f}")
+        autotune_done = True
 
     # threshold sweep every 10 epochs
     val_probs_np=np.asarray(val_probs,dtype=np.float32)
