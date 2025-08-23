@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-23 01:07
+# Last modified (MSK): 2025-08-23 01:38
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -52,10 +52,8 @@ EARLY_STOP_EPOCHS = 80
 NPR_EPS = 1e-12
 SAVE_MIN_PR_AUC = 0.58
 
-# Focal Loss params (chosen defaults)
+# Focal Loss params
 FOCAL_GAMMA = 2.0
-FOCAL_ALPHA_POS = 0.75   # emphasize positive class (rare)
-FOCAL_ALPHA_NEG = 0.25
 
 def load_dataframe(path: Path) -> pd.DataFrame:
     with open(path) as f: raw = json.load(f)
@@ -100,21 +98,19 @@ class LSTMClassifier(nn.Module):
         _, (h, _) = self.lstm(x)
         return self.fc(h[-1])
 
-class FocalLossCE(nn.Module):
-    def __init__(self, gamma: float = FOCAL_GAMMA, alpha_pos: float = FOCAL_ALPHA_POS, alpha_neg: float = FOCAL_ALPHA_NEG):
+class FocalLossWeightedCE(nn.Module):
+    def __init__(self, gamma: float = FOCAL_GAMMA, class_weights: torch.Tensor | None = None):
         super().__init__()
         self.gamma = gamma
-        self.alpha_pos = alpha_pos
-        self.alpha_neg = alpha_neg
+        self.class_weights = class_weights
     def forward(self, logits: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        # logits: (B,2), targets: (B,)
         logp = torch.log_softmax(logits, dim=1)
-        p = torch.softmax(logits, dim=1)
-        t_onehot = torch.nn.functional.one_hot(targets.to(torch.long), num_classes=2).float()
-        pt = (p * t_onehot).sum(dim=1).clamp_min(1e-12)  # prob of true class
-        weights = torch.where(targets == 1, self.alpha_pos, self.alpha_neg)
-        focal = -weights * ((1.0 - pt) ** self.gamma) * torch.sum(t_onehot * logp, dim=1)
-        return focal.mean()
+        # weighted CE per-sample
+        ce = torch.nn.functional.nll_loss(logp, targets.to(torch.long), weight=self.class_weights, reduction='none')
+        # pt = p_t
+        pt = torch.exp(logp[torch.arange(logits.size(0), device=logits.device), targets.to(torch.long)].clamp_min(-50.0))
+        loss = ((1.0 - pt) ** self.gamma) * ce
+        return loss.mean()
 
 print(f"Device: {DEVICE}")
 print("Загружаем", TRAIN_JSON)
@@ -156,8 +152,10 @@ print(f"base_lr: {BASE_LR:.2e} ({_src_base_lr})")
 
 model = LSTMClassifier(dropout=DROPOUT_P).to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), BASE_LR)
-# Focal loss (no class_weights here; alpha handles imbalance)
-lossf = FocalLossCE().to(DEVICE)
+# class weights from CE (neg/pos)
+pos_weight = float(neg_cnt) / max(float(pos_cnt), 1.0)
+class_weights = torch.tensor([1.0, pos_weight], dtype=torch.float32, device=DEVICE)
+lossf = FocalLossWeightedCE(gamma=FOCAL_GAMMA, class_weights=class_weights)
 
 # LR Finder
 print("LR Finder: старт…")
