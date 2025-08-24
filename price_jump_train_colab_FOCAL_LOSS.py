@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-22 23:11
+# Last modified (MSK): 2025-08-24 12:35
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -343,6 +343,14 @@ try:
     plt.gca().text(0.98, 0.02, const_text, transform=plt.gca().transAxes,
                    ha='right', va='bottom', fontsize=8,
                    bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    # script filename at bottom-left
+    try:
+        _script_name = Path(__file__).name
+    except Exception:
+        _script_name = "price_jump_train_colab_FOCAL_LOSS.py"
+    plt.gca().text(0.02, 0.02, _script_name, transform=plt.gca().transAxes,
+                   ha='left', va='bottom', fontsize=8,
+                   bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
     plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]')
     plt.title('Training curves (normalized)')
     plt.grid(True, alpha=0.3); plt.legend(); plt.tight_layout = plt.tight_layout
