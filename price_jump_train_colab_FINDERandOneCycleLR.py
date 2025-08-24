@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-24 12:35
+# Last modified (MSK): 2025-08-24 23:11
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -406,7 +406,7 @@ try:
     # annotate
     if np.isfinite(best_comp):
         ax1.scatter([best_thr], [best_comp*100.0], color='#1f77b4', s=30)
-        ax1.annotate(f"max CompRet={best_comp*100:.2f}%\n(thr={best_thr:.4f})",
+        ax1.annotate(f"max CompRet={best_comp*100:.2f}%\n(thr={best_thr:.4f})\ntrades={best_trades}",
                      xy=(best_thr, best_comp*100.0), xytext=(6, 12), textcoords='offset points',
                      bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
     # legend merge

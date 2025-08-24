@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-24 12:35
+# Last modified (MSK): 2025-08-24 23:11
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -447,7 +447,7 @@ try:
         idx = int(np.nanargmax(comp_arr))
         ax1.axvline(thr_arr[idx], color=l1.get_color(), linestyle='--', alpha=0.6)
         ax1.scatter([thr_arr[idx]],[comp_arr[idx]], color=l1.get_color(), s=35)
-        ax1.annotate(f"best comp={comp_arr[idx]:.2f}%\nthr={thr_arr[idx]:.4f}",
+        ax1.annotate(f"best comp={comp_arr[idx]:.2f}%\nthr={thr_arr[idx]:.4f}\ntrades={best_trades}",
                      xy=(thr_arr[idx], comp_arr[idx]), xytext=(10, 12), textcoords='offset points',
                      bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.7))
     ax1.set_xlabel('Threshold')

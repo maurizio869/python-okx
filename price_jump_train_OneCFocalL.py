@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-24 12:35
+# Last modified (MSK): 2025-08-24 23:11
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -424,7 +424,7 @@ try:
     ax3.plot(thr_list, trades_list, label='Trades', color='#8c564b')
     if np.isfinite(best_comp):
         ax1.scatter([best_thr], [best_comp*100.0], color='#1f77b4', s=30)
-        ax1.annotate(f"max CompRet={best_comp*100:.2f}%\n(thr={best_thr:.4f})",
+        ax1.annotate(f"max CompRet={best_comp*100:.2f}%\n(thr={best_thr:.4f})\ntrades={best_trades}",
                      xy=(best_thr, best_comp*100.0), xytext=(6, 12), textcoords='offset points',
                      bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
     lines1, labels1 = ax1.get_legend_handles_labels(); lines2, labels2 = ax2.get_legend_handles_labels(); lines3, labels3 = ax3.get_legend_handles_labels()
