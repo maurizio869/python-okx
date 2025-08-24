@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-24 11:53
+# Last modified (MSK): 2025-08-24 12:25
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -229,6 +229,7 @@ best_pr_auc = -1.0; best_pnl_sum = -float('inf'); best_val_acc = -1.0
 # Buffers for post-training curves
 lr_curve = []; pr_auc_curve = []; npr_auc_curve = []; pnl_curve_pct = []; val_acc_curve = []
 autotune_done = False
+autotune_epoch = None
 
 for e in range(1, EPOCHS+1):
     t0 = time.time()
@@ -261,6 +262,7 @@ for e in range(1, EPOCHS+1):
         wd_now = opt.param_groups[0]['weight_decay']
         print(f"↻ Auto-tune: PR_AUC≥{AUTOTUNE_PRAUC_THRESHOLD:.3f} → gamma={lossf.gamma:.2f}, weight_decay={wd_now:.2e}")
         autotune_done = True
+        autotune_epoch = e
 
     # threshold sweep every 10 epochs
     val_probs_np=np.asarray(val_probs,dtype=np.float32)
@@ -348,6 +350,9 @@ try:
         plt.annotate(f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
                      xy=(i_best_pnl+1, y_best_pnl), xytext=(5, -28), textcoords='offset points',
                      bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
+    # mark autotune epoch with dashed vertical line
+    if autotune_epoch is not None:
+        plt.axvline(autotune_epoch, color='#999999', linestyle='--', linewidth=1.0, alpha=0.7)
     const_text = (
         f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
         f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
