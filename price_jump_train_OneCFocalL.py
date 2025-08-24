@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-24 23:11
+# Last modified (MSK): 2025-08-24 23:31
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -434,7 +434,16 @@ try:
                   f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
                   f"pct_start={ONECYCLE_PCT_START}\ndiv_factor={ONECYCLE_DIV_FACTOR}\nfinal_div={ONECYCLE_FINAL_DIV_FACTOR}\n"
                   f"WD={WEIGHT_DECAY}\nDROPOUT={DEFAULT_DROPOUT:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}")
+
     ax1.text(0.98, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    # script filename at bottom-left
+    try:
+        _script_name = Path(__file__).name
+    except Exception:
+        _script_name = "price_jump_train_OneCFocalL.py"
+    ax1.text(0.02, 0.02, _script_name, transform=ax1.transAxes,
+             ha='left', va='bottom', fontsize=8,
+             bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
     fig.tight_layout(); from datetime import datetime; import pytz
     msk = pytz.timezone('Europe/Moscow'); ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
     out_name = f'threshold_sweep_{ts}.png'; fig.savefig(out_name, dpi=130)

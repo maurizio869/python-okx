@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-24 23:17
+# Last modified (MSK): 2025-08-24 23:31
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -457,7 +457,7 @@ try:
     labels = [ln.get_label() for ln in lines]
     ax1.legend(lines, labels, loc='best')
     ax1.grid(True, alpha=0.3)
-    # constants box bottom-right
+    # constants box bottom-right (+autotune if present)
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
@@ -466,6 +466,14 @@ try:
     ax1.text(0.98, 0.02, const_text, transform=ax1.transAxes,
              ha='right', va='bottom', fontsize=8,
              bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    # script filename at bottom-left
+    try:
+        _script_name = Path(__file__).name
+    except Exception:
+        _script_name = "price_jump_train_colab_FOCAL_LOSS.py"
+    ax1.text(0.02, 0.02, _script_name, transform=ax1.transAxes,
+             ha='left', va='bottom', fontsize=8,
+             bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
     fig.tight_layout()
     from datetime import datetime
     import pytz
