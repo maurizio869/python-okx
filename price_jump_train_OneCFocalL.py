@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-23 14:20
+# Last modified (MSK): 2025-08-24 11:49
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -100,12 +100,11 @@ class LSTMClassifier(nn.Module):
         super().__init__()
         self.lstm = nn.LSTM(input_size=5, hidden_size=hidden_size, num_layers=num_layers,
                             dropout=dropout if num_layers > 1 else 0.0, batch_first=True)
-        self.post_dropout = nn.Dropout(dropout)
         self.fc = nn.Linear(hidden_size, 2)
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = x.permute(0, 2, 1)
         _, (h, _) = self.lstm(x)
-        return self.fc(self.post_dropout(h[-1]))
+        return self.fc(h[-1])
 
 class FocalLossWeightedCE(nn.Module):
     def __init__(self, gamma: float = FOCAL_GAMMA, class_weights: torch.Tensor | None = None):
@@ -262,10 +261,8 @@ for e in range(1, EPOCHS+1):
         lossf.gamma = AUTOTUNE_GAMMA
         for pg in opt.param_groups:
             pg['weight_decay'] *= AUTOTUNE_WD_MULT
-        new_p = min(max(model.post_dropout.p + AUTOTUNE_DROPOUT_DELTA, AUTOTUNE_DROPOUT_MIN), AUTOTUNE_DROPOUT_MAX)
-        model.post_dropout.p = new_p
         wd_now = opt.param_groups[0]['weight_decay']
-        print(f"↻ Auto-tune: PR_AUC≥{AUTOTUNE_PRAUC_THRESHOLD:.3f} → gamma={lossf.gamma:.2f}, weight_decay={wd_now:.2e}, dropout={new_p:.2f}")
+        print(f"↻ Auto-tune: PR_AUC≥{AUTOTUNE_PRAUC_THRESHOLD:.3f} → gamma={lossf.gamma:.2f}, weight_decay={wd_now:.2e}")
         autotune_done = True
 
     # threshold sweep every 10 epochs
