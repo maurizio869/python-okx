@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-24 23:11
+# Last modified (MSK): 2025-08-24 23:17
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -215,7 +215,7 @@ best_pnl_thr = PNL_FIXED_THRESHOLD
 epochs_no_improve = 0
 
 for e in range(1, EPOCHS + 1):
-	_t0 = time.time()
+    _t0 = time.time()
     # train
     model.train()
     total_loss = 0.0
