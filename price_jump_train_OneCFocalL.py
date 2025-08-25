@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-24 23:31
+# Last modified (MSK): 2025-08-25 18:42
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -59,6 +59,8 @@ FOCAL_GAMMA = 1.5
 AUTOTUNE_PRAUC_THRESHOLD = 0.601
 AUTOTUNE_GAMMA = 1.4
 AUTOTUNE_WD_MULT = 1.5
+AUTOTUNE_BETA1 = 0.8
+AUTOTUNE_APPLY_BETA1 = True
 
 def load_dataframe(path: Path) -> pd.DataFrame:
     with open(path) as f: raw = json.load(f)
@@ -259,8 +261,19 @@ for e in range(1, EPOCHS+1):
         lossf.gamma = AUTOTUNE_GAMMA
         for pg in opt.param_groups:
             pg['weight_decay'] *= AUTOTUNE_WD_MULT
+        if AUTOTUNE_APPLY_BETA1:
+            try:
+                beta2 = pg.get('betas', (0.9, 0.999))[1]
+                pg['betas'] = (AUTOTUNE_BETA1, beta2)
+            except Exception:
+                pass
         wd_now = opt.param_groups[0]['weight_decay']
-        print(f"↻ Auto-tune: PR_AUC≥{AUTOTUNE_PRAUC_THRESHOLD:.3f} → gamma={lossf.gamma:.2f}, weight_decay={wd_now:.2e}")
+        betas_now = None
+        try:
+            betas_now = opt.param_groups[0]['betas']
+        except Exception:
+            pass
+        print(f"↻ Auto-tune: PR_AUC≥{AUTOTUNE_PRAUC_THRESHOLD:.3f} → gamma={lossf.gamma:.2f}, weight_decay={wd_now:.2e}, betas={betas_now}")
         autotune_done = True
         autotune_epoch = e
 
@@ -276,6 +289,15 @@ for e in range(1, EPOCHS+1):
                 r=ret_val_fixed[m]
                 comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
                 sret=float(np.sum(r))
+        meanp = float(np.mean(r)*100.0)
+        medp  = float(np.median(r)*100.0)
+        ent = entry_idx[m]
+        order = np.argsort(ent)
+        r_sorted = r[order]
+        equity = np.cumprod(1.0 + r_sorted.astype(np.float64))
+        run_max = np.maximum.accumulate(equity)
+        dd = np.min(equity / (run_max + 1e-12) - 1.0) if equity.size>0 else 0.0
+        mddp = float(abs(dd) * 100.0)
             if comp>best_comp: best_comp=comp; best_thr=float(t); best_trades=n; best_sum=sret
         last_best_thr = best_thr; pnl_best_sum = best_sum; trades_best = best_trades
     else:
@@ -394,7 +416,7 @@ ret_val = exit_closes/np.maximum(entry_opens,1e-12)-1.0
 thr_min,thr_max,thr_step=0.15,0.85,0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
 thresholds=np.arange(thr_min,thr_max+1e-12,thr_step)
-thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]; trades_list=[]
+thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]; trades_list=[]; mean_ret_list=[]; median_ret_list=[]; mdd_list=[]
 
 def _safe_sharpe_arr(r: np.ndarray) -> float:
     if r.size < 2: return 0.0
@@ -411,7 +433,16 @@ for t in thresholds:
         comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
         shp=_safe_sharpe_arr(r)
         sret=float(np.sum(r))
-    thr_list.append(float(t)); pnl_list.append(sret*100.0); comp_list.append(comp*100.0 if np.isfinite(comp) else np.nan); sharpe_list.append(shp); trades_list.append(n)
+        meanp = float(np.mean(r)*100.0)
+        medp  = float(np.median(r)*100.0)
+        ent = entry_idx[m]
+        order = np.argsort(ent)
+        r_sorted = r[order]
+        equity = np.cumprod(1.0 + r_sorted.astype(np.float64))
+        run_max = np.maximum.accumulate(equity)
+        dd = np.min(equity / (run_max + 1e-12) - 1.0) if equity.size>0 else 0.0
+        mddp = float(abs(dd) * 100.0)
+    thr_list.append(float(t)); pnl_list.append(sret*100.0); comp_list.append(comp*100.0 if np.isfinite(comp) else np.nan); sharpe_list.append(shp); trades_list.append(n); mean_ret_list.append(meanp); median_ret_list.append(medp); mdd_list.append(mddp)
     if comp>best_comp: best_comp=comp; best_thr=float(t); best_trades=n
 print(f"Выбран порог по PnL (валидация): {best_thr:.4f}, comp_ret={best_comp*100 if np.isfinite(best_comp) else float('nan'):.2f}% trades={best_trades}")
 
@@ -420,11 +451,21 @@ try:
     ax1.plot(thr_list, pnl_list, label='PnL%', color='#d62728')
     ax1.plot(thr_list, comp_list, label='CompRet%', color='#1f77b4')
     ax2.plot(thr_list, sharpe_list, label='Sharpe', color='#9467bd')
+    ax1.plot(thr_list, mean_ret_list,   label='mean_ret %',   color='#9467bd', alpha=0.9)
+    ax1.plot(thr_list, median_ret_list, label='median_ret %', color='#8c564b', alpha=0.9)
+    ax1.plot(thr_list, mdd_list,        label='max_drawdown %', color='#2ca02c', linestyle='--', alpha=0.9)
     ax3 = ax1.twinx(); ax3.get_yaxis().set_visible(False)
     ax3.plot(thr_list, trades_list, label='Trades', color='#8c564b')
     if np.isfinite(best_comp):
         ax1.scatter([best_thr], [best_comp*100.0], color='#1f77b4', s=30)
-        ax1.annotate(f"max CompRet={best_comp*100:.2f}%\n(thr={best_thr:.4f})\ntrades={best_trades}",
+                try:
+            idx = int(np.argmin(np.abs(np.asarray(thr_list) - best_thr)))
+        except Exception:
+            idx = None
+        ann = f"max CompRet={best_comp*100:.2f}%\n(thr={best_thr:.4f})\ntrades={best_trades}"
+        if idx is not None:
+            ann += f"\npnl_sum={pnl_list[idx]:.2f}%\nsharpe={sharpe_list[idx]:.3f}\nmean={mean_ret_list[idx]:.2f}%\nmedian={median_ret_list[idx]:.2f}%\nmax_dd={mdd_list[idx]:.2f}%"
+        ax1.annotate(ann,
                      xy=(best_thr, best_comp*100.0), xytext=(6, 12), textcoords='offset points',
                      bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
     lines1, labels1 = ax1.get_legend_handles_labels(); lines2, labels2 = ax2.get_legend_handles_labels(); lines3, labels3 = ax3.get_legend_handles_labels()
@@ -446,6 +487,36 @@ try:
              bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
     fig.tight_layout(); from datetime import datetime; import pytz
     msk = pytz.timezone('Europe/Moscow'); ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
+        # annotate values at first, 1/6, 1/3, last points for each left-axis metric
+    try:
+        idx0 = 0
+        idx_last = len(thr_list) - 1
+        idx_1_6 = max(0, min(idx_last, int(round(idx_last/6))))
+        idx_1_3 = max(0, min(idx_last, int(round(idx_last/3))))
+        def _ann(ax, xarr, yarr, idx, ha, va, offx, offy):
+            ax.annotate(f"{yarr[idx]:.2f}", xy=(xarr[idx], yarr[idx]), xytext=(offx, offy), textcoords='offset points', ha=ha, va=va,
+                        bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6))
+        # left side (first)
+        _ann(ax1, thr_list, comp_list, idx0, 'right', 'center', -12, 0)
+        _ann(ax1, thr_list, pnl_list, idx0, 'right', 'center', -12, -14)
+        _ann(ax1, thr_list, mean_ret_list, idx0, 'right', 'center', -12, -28)
+        _ann(ax1, thr_list, median_ret_list, idx0, 'right', 'center', -12, -42)
+        _ann(ax1, thr_list, mdd_list, idx0, 'right', 'center', -12, -56)
+        # 1/6 and 1/3
+        for _i in (idx_1_6, idx_1_3):
+            _ann(ax1, thr_list, comp_list, _i, 'center', 'bottom', 0, 6)
+            _ann(ax1, thr_list, pnl_list, _i, 'center', 'bottom', 0, 20)
+            _ann(ax1, thr_list, mean_ret_list, _i, 'center', 'bottom', 0, 34)
+            _ann(ax1, thr_list, median_ret_list, _i, 'center', 'bottom', 0, 48)
+            _ann(ax1, thr_list, mdd_list, _i, 'center', 'bottom', 0, 62)
+        # right side (last)
+        _ann(ax1, thr_list, comp_list, idx_last, 'left', 'center', 12, 0)
+        _ann(ax1, thr_list, pnl_list, idx_last, 'left', 'center', 12, -14)
+        _ann(ax1, thr_list, mean_ret_list, idx_last, 'left', 'center', 12, -28)
+        _ann(ax1, thr_list, median_ret_list, idx_last, 'left', 'center', 12, -42)
+        _ann(ax1, thr_list, mdd_list, idx_last, 'left', 'center', 12, -56)
+    except Exception:
+        pass
     out_name = f'threshold_sweep_{ts}.png'; fig.savefig(out_name, dpi=130)
     print(f"Saved threshold sweep plot to {Path(out_name).resolve()}"); plt.show()
 except Exception as ex:
