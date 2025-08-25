@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-25 15:40
+# Last modified (MSK): 2025-08-25 16:27
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -502,6 +502,36 @@ try:
     import pytz
     msk = pytz.timezone('Europe/Moscow')
     ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
+    # annotate values at first, 1/6, 1/3, last points for each left-axis metric
+    try:
+        idx0 = 0
+        idx_last = len(thr_arr) - 1
+        idx_1_6 = max(0, min(idx_last, int(round(idx_last/6))))
+        idx_1_3 = max(0, min(idx_last, int(round(idx_last/3))))
+        def _ann(ax, xarr, yarr, idx, ha, va, offx, offy):
+            ax.annotate(f"{yarr[idx]:.2f}", xy=(xarr[idx], yarr[idx]), xytext=(offx, offy), textcoords='offset points', ha=ha, va=va,
+                        bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6))
+        # left side (first)
+        _ann(ax1, thr_arr, comp_arr, idx0, 'right', 'center', -12, 0)
+        _ann(ax1, thr_arr, pnl_arr, idx0, 'right', 'center', -12, -14)
+        _ann(ax1, thr_arr, mean_arr, idx0, 'right', 'center', -12, -28)
+        _ann(ax1, thr_arr, med_arr, idx0, 'right', 'center', -12, -42)
+        _ann(ax1, thr_arr, mdd_arr, idx0, 'right', 'center', -12, -56)
+        # 1/6 и 1/3 диапазона
+        for _i in (idx_1_6, idx_1_3):
+            _ann(ax1, thr_arr, comp_arr, _i, 'center', 'bottom', 0, 6)
+            _ann(ax1, thr_arr, pnl_arr, _i, 'center', 'bottom', 0, 20)
+            _ann(ax1, thr_arr, mean_arr, _i, 'center', 'bottom', 0, 34)
+            _ann(ax1, thr_arr, med_arr, _i, 'center', 'bottom', 0, 48)
+            _ann(ax1, thr_arr, mdd_arr, _i, 'center', 'bottom', 0, 62)
+        # right side (last)
+        _ann(ax1, thr_arr, comp_arr, idx_last, 'left', 'center', 12, 0)
+        _ann(ax1, thr_arr, pnl_arr, idx_last, 'left', 'center', 12, -14)
+        _ann(ax1, thr_arr, mean_arr, idx_last, 'left', 'center', 12, -28)
+        _ann(ax1, thr_arr, med_arr, idx_last, 'left', 'center', 12, -42)
+        _ann(ax1, thr_arr, mdd_arr, idx_last, 'left', 'center', 12, -56)
+    except Exception:
+        pass
     out_name = f'threshold_sweep_{ts}.png'
     fig.savefig(out_name, dpi=130)
     print(f"Saved threshold sweep plot to {Path(out_name).resolve()}")
