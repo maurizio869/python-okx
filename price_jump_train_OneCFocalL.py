@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-24 23:31
+# Last modified (MSK): 2025-08-25 20:39
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -51,6 +51,8 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EARLY_STOP_EPOCHS = 80
 NPR_EPS = 1e-12
 SAVE_MIN_PR_AUC = 0.60
+GRADCLIP_MAXNORM_1_APPLY = True
+GRADCLIP_MAXNORM = 1.0
 
 # Focal Loss params
 FOCAL_GAMMA = 1.5
@@ -59,6 +61,8 @@ FOCAL_GAMMA = 1.5
 AUTOTUNE_PRAUC_THRESHOLD = 0.601
 AUTOTUNE_GAMMA = 1.4
 AUTOTUNE_WD_MULT = 1.5
+AUTOTUNE_BETA1 = 0.8
+AUTOTUNE_APPLY_BETA1 = True
 
 def load_dataframe(path: Path) -> pd.DataFrame:
     with open(path) as f: raw = json.load(f)
@@ -154,6 +158,7 @@ except Exception as ex:
     print(f"! Не удалось прочитать hyper/meta: {ex}")
 print(f"dropout: {DROPOUT_P:.3f} ({_src_dropout})")
 print(f"base_lr: {BASE_LR:.2e} ({_src_base_lr})")
+print(f"Grad clipping: {'ON' if GRADCLIP_MAXNORM_1_APPLY else 'OFF'} (max_norm={GRADCLIP_MAXNORM})")
 
 model = LSTMClassifier(dropout=DROPOUT_P).to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), BASE_LR)
@@ -237,7 +242,10 @@ for e in range(1, EPOCHS+1):
     for xb,yb in train_loader:
         xb,yb = xb.to(DEVICE), yb.to(DEVICE)
         opt.zero_grad(); logits=model(xb); loss=lossf(logits,yb)
-        loss.backward(); opt.step(); sched.step()
+        loss.backward();
+        if GRADCLIP_MAXNORM_1_APPLY:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), GRADCLIP_MAXNORM)
+        opt.step(); sched.step()
         total_loss += loss.item()*xb.size(0)
 
     model.eval(); corr=tot_s=0
@@ -259,8 +267,14 @@ for e in range(1, EPOCHS+1):
         lossf.gamma = AUTOTUNE_GAMMA
         for pg in opt.param_groups:
             pg['weight_decay'] *= AUTOTUNE_WD_MULT
+            if AUTOTUNE_APPLY_BETA1:
+                try:
+                    beta2 = pg.get('betas', (0.9, 0.999))[1]
+                    pg['betas'] = (AUTOTUNE_BETA1, beta2)
+                except Exception:
+                    pass
         wd_now = opt.param_groups[0]['weight_decay']
-        print(f"↻ Auto-tune: PR_AUC≥{AUTOTUNE_PRAUC_THRESHOLD:.3f} → gamma={lossf.gamma:.2f}, weight_decay={wd_now:.2e}")
+        print(f"↻ Auto-tune: PR_AUC≥{AUTOTUNE_PRAUC_THRESHOLD:.3f} → gamma={lossf.gamma:.2f}, weight_decay={wd_now:.2e}, betas={opt.param_groups[0].get('betas', None)}")
         autotune_done = True
         autotune_epoch = e
 
