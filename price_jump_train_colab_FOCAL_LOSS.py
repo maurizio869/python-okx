@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-24 23:31
+# Last modified (MSK): 2025-08-25 15:40
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -400,7 +400,7 @@ best_comp_ret = -np.inf
 best_threshold_pnl = float(thresholds[0])
 best_trades = 0
 
-thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]
+thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]; mean_ret_list=[]; median_ret_list=[]; mdd_list=[]
 
 def _safe_sharpe_arr(r: np.ndarray) -> float:
     if r.size < SHARPE_MIN_SAMPLES:
@@ -415,6 +415,9 @@ for t in thresholds:
         comp_ret = -np.inf
         sharpe = 0.0
         sum_ret = 0.0
+        mean_ret = 0.0
+        median_ret = 0.0
+        mdd_pct = 0.0
     else:
         r = ret_per_trade_val[mask]
         if np.any(r <= BLACK_SWAN_LIMIT):
@@ -423,7 +426,17 @@ for t in thresholds:
             comp_ret = float(np.exp(np.sum(np.log1p(r))) - 1.0)
         sharpe = _safe_sharpe_arr(r)
         sum_ret = float(np.sum(r))
-    thr_list.append(float(t)); pnl_list.append(sum_ret*100.0); comp_list.append(comp_ret*100.0 if np.isfinite(comp_ret) else np.nan); sharpe_list.append(sharpe)
+        # extra metrics
+        mean_ret = float(np.mean(r) * 100.0)
+        median_ret = float(np.median(r) * 100.0)
+        ent = entry_idx[mask]
+        order = np.argsort(ent)
+        r_sorted = r[order]
+        equity = np.cumprod(1.0 + r_sorted.astype(np.float64))
+        run_max = np.maximum.accumulate(equity)
+        dd = np.min(equity / (run_max + COMP_EPS) - 1.0) if equity.size > 0 else 0.0
+        mdd_pct = float(abs(dd) * 100.0)
+    thr_list.append(float(t)); pnl_list.append(sum_ret*100.0); comp_list.append(comp_ret*100.0 if np.isfinite(comp_ret) else np.nan); sharpe_list.append(sharpe); mean_ret_list.append(mean_ret); median_ret_list.append(median_ret); mdd_list.append(mdd_pct)
     if comp_ret > best_comp_ret:
         best_comp_ret = comp_ret
         best_threshold_pnl = float(t)
@@ -440,20 +453,30 @@ try:
     pnl_arr = np.asarray(pnl_list)
     comp_arr = np.asarray(comp_list)
     shp_arr = np.asarray(sharpe_list)
+    mean_arr = np.asarray(mean_ret_list)
+    med_arr = np.asarray(median_ret_list)
+    mdd_arr = np.asarray(mdd_list)
     l1, = ax1.plot(thr_arr, comp_arr, label='comp_ret %', color='#1f77b4')
     l2, = ax1.plot(thr_arr, pnl_arr, label='pnl_sum %', color='#ff7f0e')
     l3, = ax2.plot(thr_arr, shp_arr, label='sharpe', color='#2ca02c', alpha=0.8)
+    l4, = ax1.plot(thr_arr, mean_arr, label='mean_ret %', color='#9467bd', alpha=0.9)
+    l5, = ax1.plot(thr_arr, med_arr, label='median_ret %', color='#8c564b', alpha=0.9)
+    l6, = ax1.plot(thr_arr, mdd_arr, label='max_drawdown %', color='#2ca02c', linestyle='--', alpha=0.9)
     if np.isfinite(best_comp_ret):
         idx = int(np.nanargmax(comp_arr))
         ax1.axvline(thr_arr[idx], color=l1.get_color(), linestyle='--', alpha=0.6)
         ax1.scatter([thr_arr[idx]],[comp_arr[idx]], color=l1.get_color(), s=35)
-        ax1.annotate(f"best comp={comp_arr[idx]:.2f}%\nthr={thr_arr[idx]:.4f}\ntrades={best_trades}",
-                     xy=(thr_arr[idx], comp_arr[idx]), xytext=(10, 12), textcoords='offset points',
-                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.7))
+        ax1.annotate(
+            f"best comp={comp_arr[idx]:.2f}%\nthr={thr_arr[idx]:.4f}\ntrades={best_trades}\n"
+            f"pnl_sum={pnl_arr[idx]:.2f}%\nsharpe={shp_arr[idx]:.3f}\n"
+            f"mean={mean_arr[idx]:.2f}%\nmedian={med_arr[idx]:.2f}%\nmax_dd={mdd_arr[idx]:.2f}%",
+            xy=(thr_arr[idx], comp_arr[idx]), xytext=(10, 12), textcoords='offset points',
+            bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.7)
+        )
     ax1.set_xlabel('Threshold')
     ax1.set_ylabel('% metrics (comp_ret, pnl_sum)')
     ax2.set_ylabel('Sharpe')
-    lines = [l1,l2,l3]
+    lines = [l1,l2,l3,l4,l5,l6]
     labels = [ln.get_label() for ln in lines]
     ax1.legend(lines, labels, loc='best')
     ax1.grid(True, alpha=0.3)

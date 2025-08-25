@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-24 23:31
+# Last modified (MSK): 2025-08-25 15:40
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -376,7 +376,7 @@ thr_min,thr_max,thr_step=0.15,0.85,0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
 thresholds=np.arange(thr_min,thr_max+1e-12,thr_step)
 # collect metrics for plotting
-thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]; trades_list=[]
+thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]; trades_list=[]; mean_ret_list=[]; median_ret_list=[]; mdd_list=[]
 def _safe_sharpe_arr(r: np.ndarray) -> float:
     if r.size < 2: return 0.0
     std = float(np.std(r))
@@ -385,13 +385,23 @@ best_comp=-np.inf; best_thr=float(thresholds[0]); best_trades=0
 for t in thresholds:
     m=(val_probs_all>=t); n=int(m.sum())
     if n==0:
-        comp=-np.inf; shp=0.0; sret=0.0
+        comp=-np.inf; shp=0.0; sret=0.0; meanp=0.0; medp=0.0; mddp=0.0
     else:
         r=ret_val[m]
         comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
         shp=_safe_sharpe_arr(r)
         sret=float(np.sum(r))
-    thr_list.append(float(t)); pnl_list.append(sret*100.0); comp_list.append(comp*100.0 if np.isfinite(comp) else np.nan); sharpe_list.append(shp); trades_list.append(n)
+        meanp = float(np.mean(r)*100.0)
+        medp  = float(np.median(r)*100.0)
+        # max drawdown on equity in chronological order
+        ent = entry_idx[m]
+        order = np.argsort(ent)
+        r_sorted = r[order]
+        equity = np.cumprod(1.0 + r_sorted.astype(np.float64))
+        run_max = np.maximum.accumulate(equity)
+        dd = np.min(equity / (run_max + 1e-12) - 1.0) if equity.size>0 else 0.0
+        mddp = float(abs(dd) * 100.0)
+    thr_list.append(float(t)); pnl_list.append(sret*100.0); comp_list.append(comp*100.0 if np.isfinite(comp) else np.nan); sharpe_list.append(shp); trades_list.append(n); mean_ret_list.append(meanp); median_ret_list.append(medp); mdd_list.append(mddp)
     if comp>best_comp: best_comp=comp; best_thr=float(t); best_trades=n
 print(f"Выбран порог по PnL (валидация): {best_thr:.4f}, comp_ret={best_comp*100 if np.isfinite(best_comp) else float('nan'):.2f}% trades={best_trades}")
 # plot metrics vs threshold with max comp_ret annotated
@@ -401,12 +411,23 @@ try:
     ax1.plot(thr_list, pnl_list, label='PnL%', color='#d62728')
     ax1.plot(thr_list, comp_list, label='CompRet%', color='#1f77b4')
     ax2.plot(thr_list, sharpe_list, label='Sharpe', color='#9467bd')
+    ax1.plot(thr_list, mean_ret_list, label='mean_ret %', color='#9467bd', alpha=0.9)
+    ax1.plot(thr_list, median_ret_list, label='median_ret %', color='#8c564b', alpha=0.9)
+    ax1.plot(thr_list, mdd_list, label='max_drawdown %', color='#2ca02c', linestyle='--', alpha=0.9)
     ax3 = ax1.twinx(); ax3.get_yaxis().set_visible(False)
     ax3.plot(thr_list, trades_list, label='Trades', color='#8c564b')
     # annotate
     if np.isfinite(best_comp):
         ax1.scatter([best_thr], [best_comp*100.0], color='#1f77b4', s=30)
-        ax1.annotate(f"max CompRet={best_comp*100:.2f}%\n(thr={best_thr:.4f})\ntrades={best_trades}",
+        # find index of best_thr in thr_list for metric reads
+        try:
+            idx = int(np.argmin(np.abs(np.asarray(thr_list) - best_thr)))
+        except Exception:
+            idx = None
+        ann = f"max CompRet={best_comp*100:.2f}%\n(thr={best_thr:.4f})\ntrades={best_trades}"
+        if idx is not None:
+            ann += f"\npnl_sum={pnl_list[idx]:.2f}%\nsharpe={sharpe_list[idx]:.3f}\nmean={mean_ret_list[idx]:.2f}%\nmedian={median_ret_list[idx]:.2f}%\nmax_dd={mdd_list[idx]:.2f}%"
+        ax1.annotate(ann,
                      xy=(best_thr, best_comp*100.0), xytext=(6, 12), textcoords='offset points',
                      bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
     # legend merge
