@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-25 16:27
+# Last modified (MSK): 2025-08-25 19:20
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
  Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -48,6 +48,8 @@ PATIENCE_GROWTH = 1.5
 IMPROVE_EPS = 1e-6
 COMP_EPS = 1e-12
 SHARPE_MIN_SAMPLES = 2
+GRADCLIP_MAXNORM_1_APPLY = True
+GRADCLIP_MAXNORM = 1.0
 
 
 def load_dataframe(path: Path) -> pd.DataFrame:
@@ -185,6 +187,8 @@ if _got_base_lr:
 else:
 	print(f"base_lr взят по умолчанию: {LR:.2e}")
 
+print(f"Grad clipping: {'ON' if GRADCLIP_MAXNORM_1_APPLY else 'OFF'} (max_norm={GRADCLIP_MAXNORM})")
+
 model = LSTMClassifier(hidden=LSTM_HIDDEN, layers=LSTM_LAYERS, dropout=DROPOUT_P).to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
 current_patience = REDUCE_ON_PLATEAU_START_PATIENCE
@@ -207,7 +211,10 @@ for e in range(1, EPOCHS+1):
 	model.train(); tot=0
 	for x,y in tl:
 		x,y = x.to(DEVICE), y.to(DEVICE)
-		opt.zero_grad(); loss=lossf(model(x),y); loss.backward(); opt.step()
+		opt.zero_grad(); loss=lossf(model(x),y); loss.backward();
+		if GRADCLIP_MAXNORM_1_APPLY:
+			torch.nn.utils.clip_grad_norm_(model.parameters(), GRADCLIP_MAXNORM)
+		opt.step()
 		tot += loss.item()*x.size(0)
 	# validation: collect preds, probs for metrics
 	model.eval(); corr=tot_s=0

@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-25 16:27
+# Last modified (MSK): 2025-08-25 19:20
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -33,6 +33,8 @@ LSTM_LAYERS = 2
 DEFAULT_DROPOUT = 0.35
 REF_VOL_EPS = 1e-8
 MIN_DENOM_EPS = 1e-12
+GRADCLIP_MAXNORM_1_APPLY = True
+GRADCLIP_MAXNORM = 1.0
 
 # Focal Loss параметры (подбираются по валидации)
 ALPHA_NEG, ALPHA_POS = 0.25, 0.75
@@ -200,6 +202,8 @@ if _got_base_lr:
 else:
 	print(f"base_lr взят по умолчанию: {LR:.2e}")
 
+print(f"Grad clipping: {'ON' if GRADCLIP_MAXNORM_1_APPLY else 'OFF'} (max_norm={GRADCLIP_MAXNORM})")
+
 # модель/опт/шедулер/лосс
 model = LSTMClassifier(dropout=DROPOUT_P).to(DEVICE)
 opt   = torch.optim.Adam(model.parameters(), LR)
@@ -225,6 +229,8 @@ for e in range(1, EPOCHS + 1):
         logits = model(xb)
         loss = lossf(logits, yb)
         loss.backward()
+        if GRADCLIP_MAXNORM_1_APPLY:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), GRADCLIP_MAXNORM)
         opt.step()
         total_loss += loss.item() * xb.size(0)
 

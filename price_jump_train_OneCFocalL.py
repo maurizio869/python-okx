@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-25 18:42
+# Last modified (MSK): 2025-08-25 19:20
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -51,6 +51,8 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EARLY_STOP_EPOCHS = 80
 NPR_EPS = 1e-12
 SAVE_MIN_PR_AUC = 0.60
+GRADCLIP_MAXNORM_1_APPLY = True
+GRADCLIP_MAXNORM = 1.0
 
 # Focal Loss params
 FOCAL_GAMMA = 1.5
@@ -239,7 +241,10 @@ for e in range(1, EPOCHS+1):
     for xb,yb in train_loader:
         xb,yb = xb.to(DEVICE), yb.to(DEVICE)
         opt.zero_grad(); logits=model(xb); loss=lossf(logits,yb)
-        loss.backward(); opt.step(); sched.step()
+        loss.backward();
+        if GRADCLIP_MAXNORM_1_APPLY:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), GRADCLIP_MAXNORM)
+        opt.step(); sched.step()
         total_loss += loss.item()*xb.size(0)
 
     model.eval(); corr=tot_s=0
