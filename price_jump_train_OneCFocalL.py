@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-26 10:51
+# Last modified (MSK): 2025-08-26 13:10
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -400,13 +400,11 @@ try:
     eps = 1e-12
     plt.figure(figsize=(8,5))
     x = np.arange(1, len(lr_curve)+1)
-    # unique styles
-    style_names = list(curves.keys())
+    # unique colors, no markers per requirement
     tab10 = [
         '#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd',
         '#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf'
     ]
-    markers = ['o','s','^','D','x','+','v','<','>','P']
     colors = {}
     for idx, (name, arr) in enumerate(curves.items()):
         arr = np.asarray(arr, dtype=np.float64)
@@ -415,32 +413,44 @@ try:
         arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + eps)
         line, = plt.plot(
             x[:len(arr_norm)], arr_norm, label=name,
-            color=tab10[idx % len(tab10)], marker=markers[idx % len(markers)],
-            linewidth=1.8, alpha=0.95, markevery=max(1, len(arr_norm)//25)
+            color=tab10[idx % len(tab10)], linewidth=1.8, alpha=0.95
         )
         colors[name] = line.get_color()
-    # annotate max PR_AUC and max PnL% directly on points
+    ax = plt.gca()
+    # annotate max PR_AUC and max PnL above axes, avoid overlap
+    pr_ann = None; pnl_ann = None
+    xlen = max(1, len(lr_curve))
     if len(pr_auc_curve) > 0:
         i_best_pr = int(np.nanargmax(pr_auc_curve))
         y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + eps)
-        plt.scatter([i_best_pr+1], [y_best_pr], color=colors.get('PR_AUC', '#2ca02c'), s=30)
-        plt.annotate(
-            f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f}\n(ep={i_best_pr+1})",
-            xy=(i_best_pr+1, y_best_pr), xytext=(0, 0), textcoords='offset points',
-            ha='center', va='center', fontsize=7,
-            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6)
-        )
+        x_frac_pr = (i_best_pr + 1) / xlen
+        pr_ann = ax.annotate(
+            f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f} (ep={i_best_pr+1})",
+            xy=(i_best_pr+1, y_best_pr), xycoords='data',
+            xytext=(x_frac_pr, 1.06), textcoords='axes fraction',
+            ha='center', va='bottom', fontsize=7,
+            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.8))
     if len(pnl_curve_pct) > 0:
         i_best_pnl = int(np.nanargmax(pnl_curve_pct))
         y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + eps)
-        plt.scatter([i_best_pnl+1], [y_best_pnl], color=colors.get('PnL%', '#d62728'), s=30)
-        plt.annotate(
-            f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
-            xy=(i_best_pnl+1, y_best_pnl), xytext=(0, 0), textcoords='offset points',
-            ha='center', va='center', fontsize=7,
-            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6)
-        )
-    # constants box
+        x_frac_pnl = (i_best_pnl + 1) / xlen
+        pnl_ann = ax.annotate(
+            f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}% (ep={i_best_pnl+1})",
+            xy=(i_best_pnl+1, y_best_pnl), xycoords='data',
+            xytext=(x_frac_pnl, 1.12), textcoords='axes fraction',
+            ha='center', va='bottom', fontsize=7,
+            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.8))
+    # simple collision avoidance: if texts too close in x, shift left/right
+    try:
+        if pr_ann is not None and pnl_ann is not None:
+            (xpr, ypr) = pr_ann.get_position()
+            (xpn, ypn) = pnl_ann.get_position()
+            if abs(xpr - xpn) < 0.08:
+                pr_ann.set_position((xpr - 0.06, ypr))
+                pnl_ann.set_position((xpn + 0.06, ypn))
+    except Exception:
+        pass
+    # constants box (inside axes, bottom-right)
     const_text = (
         f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
         f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
@@ -450,17 +460,19 @@ try:
         f"\nauto_beta1={AUTOTUNE_BETA1}\nAPPLY_BETA={AUTOTUNE_APPLY_BETA}\nAPPLY_GRADCLIP={AUTOTUNE_APPLY_GRADCLIP}"
         f"\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}"
     )
-    plt.gca().text(1.02, 0.02, const_text, transform=plt.gca().transAxes,
-                   ha='right', va='bottom', fontsize=8,
-                   bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7), clip_on=False)
+    ax.text(0.98, 0.02, const_text, transform=ax.transAxes,
+            ha='right', va='bottom', fontsize=8,
+            bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    # legend strictly to the left of constants box (bottom-right area)
+    plt.legend(loc='lower right', bbox_to_anchor=(0.80, 0.02))
     try:
         _script_name = Path(__file__).name
     except Exception:
         _script_name = "price_jump_train_OneCFocalL.py"
-    plt.gca().text(0.02, 0.02, _script_name, transform=plt.gca().transAxes,
-                   ha='left', va='bottom', fontsize=8,
-                   bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
-    plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]'); plt.legend(loc='best'); plt.grid(True, alpha=0.3)
+    ax.text(0.02, 0.02, _script_name, transform=ax.transAxes,
+            ha='left', va='bottom', fontsize=8,
+            bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
+    plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]'); plt.grid(True, alpha=0.3)
     plt.tight_layout()
     from datetime import datetime; import pytz
     msk = pytz.timezone('Europe/Moscow'); ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
@@ -515,36 +527,39 @@ print(f"Выбран порог по PnL (валидация): {best_thr:.4f}, c
 
 try:
     fig, ax1 = plt.subplots(figsize=(8,5)); ax2 = ax1.twinx()
-    ax1.plot(thr_list, pnl_list, label='PnL%', color='#d62728')
-    ax1.plot(thr_list, comp_list, label='CompRet%', color='#1f77b4')
-    ax2.plot(thr_list, sharpe_list, label='Sharpe', color='#9467bd')
-    ax1.plot(thr_list, mean_ret_list,   label='mean_ret %',   color='#9467bd', alpha=0.9)
-    ax1.plot(thr_list, median_ret_list, label='median_ret %', color='#8c564b', alpha=0.9)
-    ax1.plot(thr_list, mdd_list,        label='max_drawdown %', color='#2ca02c', linestyle='--', alpha=0.9)
-    ax3 = ax1.twinx(); ax3.get_yaxis().set_visible(False)
-    ax3.plot(thr_list, trades_list, label='Trades', color='#8c564b')
+    # left metrics normalized to [0,1]
+    thr_arr = np.asarray(thr_list)
+    pnl_arr = np.asarray(pnl_list)
+    comp_arr = np.asarray(comp_list)
+    shp_arr = np.asarray(sharpe_list)
+    mean_arr = np.asarray(mean_ret_list)
+    med_arr  = np.asarray(median_ret_list)
+    mdd_arr  = np.asarray(mdd_list)
+    def _norm(a):
+        a = np.asarray(a, dtype=np.float64)
+        return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a) + 1e-12) if a.size>0 else a
+    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr)
+    # styles: mean black dashed, median gray dashed; others distinct
+    l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color='#1f77b4', linewidth=1.8)
+    l2, = ax1.plot(thr_arr, pnl_n,  label='pnl_sum (norm)',  color='#ff7f0e', linewidth=1.8)
+    l3, = ax1.plot(thr_arr, mean_n, label='mean_ret (norm)', color='#000000', linestyle='--', linewidth=1.6)
+    l4, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color='#7f7f7f', linestyle='--', linewidth=1.6)
+    l5, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color='#2ca02c', linestyle='-', linewidth=1.6)
+    l6, = ax2.plot(thr_arr, shp_arr, label='Sharpe', color='#9467bd', alpha=0.9)
+    # annotate best comp
     if np.isfinite(best_comp):
-        ax1.scatter([best_thr], [best_comp*100.0], color='#1f77b4', s=30)
-        try:
-            idx = int(np.argmin(np.abs(np.asarray(thr_list) - best_thr)))
-        except Exception:
-            idx = None
-        ann = f"max CompRet={best_comp*100:.2f}%\n(thr={best_thr:.4f})\ntrades={best_trades}"
-        if idx is not None:
-            ann += f"\npnl_sum={pnl_list[idx]:.2f}%\nsharpe={sharpe_list[idx]:.3f}\nmean={mean_ret_list[idx]:.2f}%\nmedian={median_ret_list[idx]:.2f}%\nmax_dd={mdd_list[idx]:.2f}%"
-        ax1.annotate(ann,
-                     xy=(best_thr, best_comp*100.0), xytext=(6, 12), textcoords='offset points',
-                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
-    lines1, labels1 = ax1.get_legend_handles_labels(); lines2, labels2 = ax2.get_legend_handles_labels(); lines3, labels3 = ax3.get_legend_handles_labels()
-    lines = lines1 + lines2 + lines3; labels = labels1 + labels2 + labels3
-    ax1.legend(lines, labels, loc='best'); ax1.grid(True, alpha=0.3)
+        idx = int(np.nanargmax(comp_arr))
+        ax1.axvline(thr_arr[idx], color=l1.get_color(), linestyle='--', alpha=0.6)
+    # constants box bottom-right inside axes
     const_text = (f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
                   f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
                   f"pct_start={ONECYCLE_PCT_START}\ndiv_factor={ONECYCLE_DIV_FACTOR}\nfinal_div={ONECYCLE_FINAL_DIV_FACTOR}\n"
                   f"WD={WEIGHT_DECAY}\nDROPOUT={DEFAULT_DROPOUT:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}"
                   f"\nauto_thr={AUTOTUNE_PRAUC_THRESHOLD}\nauto_gamma={AUTOTUNE_GAMMA}\nauto_WD×{AUTOTUNE_WD_MULT}\nauto_beta1={AUTOTUNE_BETA1}\nAPPLY_BETA={AUTOTUNE_APPLY_BETA}\nAPPLY_GRADCLIP={AUTOTUNE_APPLY_GRADCLIP}\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}")
-
-    ax1.text(1.02, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7), clip_on=False)
+    ax1.text(0.98, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    # legend strictly above constants box (can protrude upward)
+    ax1.legend(loc='lower right', bbox_to_anchor=(0.98, 0.26))
+    ax1.grid(True, alpha=0.3)
     try:
         _script_name = Path(__file__).name
     except Exception:
@@ -554,34 +569,22 @@ try:
              bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
     fig.tight_layout(); from datetime import datetime; import pytz
     msk = pytz.timezone('Europe/Moscow'); ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
-        # annotate values at first, 1/6, 1/3, last points for each left-axis metric
+    # fixed-point annotations at thr_min, thirds, thr_max
     try:
-        idx0 = 0
-        idx_last = len(thr_list) - 1
-        idx_1_6 = max(0, min(idx_last, int(round(idx_last/6))))
-        idx_1_3 = max(0, min(idx_last, int(round(idx_last/3))))
-        def _ann(ax, xarr, yarr, idx, ha, va, offx, offy):
-            ax.annotate(f"{yarr[idx]:.2f}", xy=(xarr[idx], yarr[idx]), xytext=(offx, offy), textcoords='offset points', ha=ha, va=va,
-                        bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6))
-        # left side (first)
-        _ann(ax1, thr_list, comp_list, idx0, 'right', 'center', -12, 0)
-        _ann(ax1, thr_list, pnl_list, idx0, 'right', 'center', -12, -14)
-        _ann(ax1, thr_list, mean_ret_list, idx0, 'right', 'center', -12, -28)
-        _ann(ax1, thr_list, median_ret_list, idx0, 'right', 'center', -12, -42)
-        _ann(ax1, thr_list, mdd_list, idx0, 'right', 'center', -12, -56)
-        # 1/6 and 1/3
-        for _i in (idx_1_6, idx_1_3):
-            _ann(ax1, thr_list, comp_list, _i, 'center', 'bottom', 0, 6)
-            _ann(ax1, thr_list, pnl_list, _i, 'center', 'bottom', 0, 20)
-            _ann(ax1, thr_list, mean_ret_list, _i, 'center', 'bottom', 0, 34)
-            _ann(ax1, thr_list, median_ret_list, _i, 'center', 'bottom', 0, 48)
-            _ann(ax1, thr_list, mdd_list, _i, 'center', 'bottom', 0, 62)
-        # right side (last)
-        _ann(ax1, thr_list, comp_list, idx_last, 'left', 'center', 12, 0)
-        _ann(ax1, thr_list, pnl_list, idx_last, 'left', 'center', 12, -14)
-        _ann(ax1, thr_list, mean_ret_list, idx_last, 'left', 'center', 12, -28)
-        _ann(ax1, thr_list, median_ret_list, idx_last, 'left', 'center', 12, -42)
-        _ann(ax1, thr_list, mdd_list, idx_last, 'left', 'center', 12, -56)
+        thr_min_v = float(thr_min); thr_max_v = float(thr_max)
+        delta = thr_max_v - thr_min_v
+        t_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
+        def _annot_series(ax, xvals, yvals, color):
+            for t in t_points:
+                idx = int(np.argmin(np.abs(xvals - t)))
+                ax.scatter([xvals[idx]],[yvals[idx]], color=color, s=14)
+                ax.annotate(f"{yvals[idx]:.2f}", xy=(xvals[idx], yvals[idx]), xytext=(0,0), textcoords='offset points', ha='center', va='center', fontsize=7,
+                            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7))
+        _annot_series(ax1, thr_arr, comp_n, l1.get_color())
+        _annot_series(ax1, thr_arr, pnl_n,  l2.get_color())
+        _annot_series(ax1, thr_arr, mean_n, l3.get_color())
+        _annot_series(ax1, thr_arr, med_n,  l4.get_color())
+        _annot_series(ax1, thr_arr, mdd_n,  l5.get_color())
     except Exception:
         pass
     out_name = f'threshold_sweep_{ts}.png'; fig.savefig(out_name, dpi=130)
