@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-26 10:51
+# Last modified (MSK): 2025-08-26 13:10
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
  Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -305,8 +305,7 @@ try:
     }
     plt.figure(figsize=(8,5))
     x = np.arange(1, len(lr_curve)+1)
-    tab10 = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf']
-    markers = ['o','s','^','D','x','+','v','<','>','P']
+    tab10 = ['#1f77b4','#ff7f0e','#2ca02c','#d62728']
     colors = {}
     for idx, (name, arr) in enumerate(curves.items()):
         if arr.size == 0:
@@ -314,50 +313,30 @@ try:
         arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + PLOT_NORM_EPS)
         line, = plt.plot(
             x[:len(arr_norm)], arr_norm, label=name,
-            color=tab10[idx % len(tab10)], marker=markers[idx % len(markers)],
-            linewidth=1.8, alpha=0.95, markevery=max(1, len(arr_norm)//25)
+            color=tab10[idx % len(tab10)], linewidth=1.8, alpha=0.95
         )
         colors[name] = line.get_color()
-    # annotate max PR_AUC and max PnL% directly on points
-    i_best_pr = None
-    if len(pr_auc_curve) > 0:
-        i_best_pr = int(np.nanargmax(pr_auc_curve))
-        y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + PLOT_NORM_EPS)
-        plt.scatter([i_best_pr+1], [y_best_pr], color=colors.get('PR_AUC', '#2ca02c'), s=30)
-        plt.annotate(
-            f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f}\n(ep={i_best_pr+1})",
-            xy=(i_best_pr+1, y_best_pr), xytext=(0, 0), textcoords='offset points',
-            ha='center', va='center', fontsize=7,
-            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6)
-        )
-    if len(pnl_curve_pct) > 0:
-        i_best_pnl = int(np.nanargmax(pnl_curve_pct))
-        y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + PLOT_NORM_EPS)
-        plt.scatter([i_best_pnl+1], [y_best_pnl], color=colors.get('PnL%', '#d62728'), s=30)
-        plt.annotate(
-            f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
-            xy=(i_best_pnl+1, y_best_pnl), xytext=(0, 0), textcoords='offset points',
-            ha='center', va='center', fontsize=7,
-            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6)
-        )
+    ax = plt.gca()
+    # place constants bottom-right inside; legend left of it
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
         f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nUSE_STANDARD_SCALER=True"
     )
-    plt.gca().text(1.02, 0.02, const_text, transform=plt.gca().transAxes,
-                   ha='right', va='bottom', fontsize=8,
-                   bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7), clip_on=False)
+    ax.text(0.98, 0.02, const_text, transform=ax.transAxes,
+            ha='right', va='bottom', fontsize=8,
+            bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    plt.legend(loc='lower right', bbox_to_anchor=(0.80, 0.02))
     try:
         _script_name = Path(__file__).name
     except Exception:
         _script_name = "price_jump_train_colab.py"
-    plt.gca().text(0.02, 0.02, _script_name, transform=plt.gca().transAxes,
-                   ha='left', va='bottom', fontsize=8,
-                   bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
+    ax.text(0.02, 0.02, _script_name, transform=ax.transAxes,
+            ha='left', va='bottom', fontsize=8,
+            bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
     plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]')
     plt.title('Training curves (normalized)')
-    plt.grid(True, alpha=0.3); plt.legend(); plt.tight_layout()
+    plt.grid(True, alpha=0.3); plt.tight_layout()
     from datetime import datetime
     import pytz
     msk = pytz.timezone('Europe/Moscow')
@@ -452,47 +431,45 @@ try:
     mean_arr = np.asarray(mean_ret_list)
     med_arr = np.asarray(median_ret_list)
     mdd_arr = np.asarray(mdd_list)
-    # normalize left-axis metrics to [0,1] for visibility
+    # normalize left-axis metrics
     def _norm(a):
         a = np.asarray(a, dtype=np.float64)
         return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a) + PLOT_NORM_EPS) if a.size>0 else a
     comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr)
-    # unique colors/markers
-    tab10 = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b']
-    markers = ['o','s','^','D','x','+']
-    l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color=tab10[0], marker=markers[0], linewidth=1.8, alpha=0.95)
-    l2, = ax1.plot(thr_arr, pnl_n,  label='pnl_sum (norm)',  color=tab10[1], marker=markers[1], linewidth=1.8, alpha=0.95)
-    l3, = ax2.plot(thr_arr, shp_arr, label='sharpe', color=tab10[2], alpha=0.9)
-    l4, = ax1.plot(thr_arr, mean_n, label='mean_ret (norm)', color=tab10[3], marker=markers[2], linewidth=1.6, alpha=0.9)
-    l5, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color=tab10[4], marker=markers[3], linewidth=1.6, alpha=0.9)
-    l6, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color=tab10[5], marker=markers[4], linestyle='--', linewidth=1.6, alpha=0.9)
-    if np.isfinite(best_comp_ret):
-        idx = int(np.nanargmax(comp_arr))
-        ax1.axvline(thr_arr[idx], color=l1.get_color(), linestyle='--', alpha=0.6)
-        # annotate directly on points with smaller font
-        ax1.scatter([thr_arr[idx]],[comp_n[idx]], color=l1.get_color(), s=28)
-        ax1.annotate(f"best comp={comp_arr[idx]:.2f}%\nthr={thr_arr[idx]:.4f}\ntrades={best_trades}\npnl_sum={pnl_arr[idx]:.2f}%\nsharpe={shp_arr[idx]:.3f}\nmean={mean_arr[idx]:.2f}%\nmedian={med_arr[idx]:.2f}%\nmax_dd={mdd_arr[idx]:.2f}%",
-                     xy=(thr_arr[idx], comp_n[idx]), xytext=(0, 0), textcoords='offset points', ha='center', va='center', fontsize=7,
-                     bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7))
-    ax1.set_xlabel('Threshold')
-    ax1.set_ylabel('Normalized metrics (left)')
-    ax2.set_ylabel('Sharpe (right)')
-    lines = [l1,l2,l3,l4,l5,l6]
-    labels = [ln.get_label() for ln in lines]
-    ax1.legend(lines, labels, loc='best')
-    ax1.grid(True, alpha=0.3)
+    # styles
+    l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color='#1f77b4', linewidth=1.8)
+    l2, = ax1.plot(thr_arr, pnl_n,  label='pnl_sum (norm)',  color='#ff7f0e', linewidth=1.8)
+    l3, = ax1.plot(thr_arr, mean_n, label='mean_ret (norm)', color='#000000', linestyle='--', linewidth=1.6)
+    l4, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color='#7f7f7f', linestyle='--', linewidth=1.6)
+    l5, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color='#2ca02c', linestyle='-', linewidth=1.6)
+    l6, = ax2.plot(thr_arr, shp_arr, label='Sharpe', color='#9467bd', alpha=0.9)
+    # constants box bottom-right; legend strictly above it
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
         f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nUSE_STANDARD_SCALER=True"
     )
-    ax1.text(1.02, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7), clip_on=False)
+    ax1.text(0.98, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    ax1.legend(loc='lower right', bbox_to_anchor=(0.98, 0.26))
+    ax1.grid(True, alpha=0.3)
+    # fixed-point annotations at thr_min, thirds, thr_max
     try:
-        _script_name = Path(__file__).name
+        thr_min_v = float(THR_SWEEP_MIN); thr_max_v = float(THR_SWEEP_MAX)
+        delta = thr_max_v - thr_min_v
+        t_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
+        def _annot_series(ax, xvals, yvals, color):
+            for t in t_points:
+                idx = int(np.argmin(np.abs(xvals - t)))
+                ax.scatter([xvals[idx]],[yvals[idx]], color=color, s=14)
+                ax.annotate(f"{yvals[idx]:.2f}", xy=(xvals[idx], yvals[idx]), xytext=(0,0), textcoords='offset points', ha='center', va='center', fontsize=7,
+                            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7))
+        _annot_series(ax1, thr_arr, comp_n, l1.get_color())
+        _annot_series(ax1, thr_arr, pnl_n,  l2.get_color())
+        _annot_series(ax1, thr_arr, mean_n, l3.get_color())
+        _annot_series(ax1, thr_arr, med_n,  l4.get_color())
+        _annot_series(ax1, thr_arr, mdd_n,  l5.get_color())
     except Exception:
-        _script_name = "price_jump_train_colab.py"
-    ax1.text(0.02, 0.02, _script_name, transform=ax1.transAxes, ha='left', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
-    fig.tight_layout()
+        pass
     from datetime import datetime
     import pytz
     msk = pytz.timezone('Europe/Moscow')
