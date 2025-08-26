@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-26 09:38
+# Last modified (MSK): 2025-08-26 10:08
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -53,6 +53,8 @@ NPR_EPS = 1e-12
 SAVE_MIN_PR_AUC = 0.60
 GRADCLIP_MAXNORM_1_APPLY = False
 GRADCLIP_MAXNORM = 1.0
+USE_STANDARD_SCALER = False
+USE_EARLY_STOP = False
 
 # Focal Loss params
 FOCAL_GAMMA = 1.5
@@ -77,14 +79,39 @@ class CandleDataset(Dataset):
         self.highs = df["h"].astype(np.float32).values
         self.lows = df["l"].astype(np.float32).values
         self.volumes = df["v"].astype(np.float32).values
-        self.scaler = StandardScaler()
+        self.scaler = None
+        self.use_scaler = False
         self.samples = []
         for i in range(SEQ_LEN, len(self.closes) - PRED_WINDOW):
             current_open = float(self.opens[i])
             max_close = float(np.max(self.closes[i+1:i+PRED_WINDOW+1]))
             label = 1 if (max_close / max(current_open, 1e-12) - 1.0) >= JUMP_THRESHOLD else 0
             self.samples.append((i, label))
-    def __len__(self): return len(self.samples)
+
+    def fit_scaler_on_indices(self, sample_indices: list[int]) -> None:
+        try:
+            windows = []
+            for sample_idx in sample_indices:
+                i, _ = self.samples[sample_idx]
+                x_seq_t = np.stack([
+                    self.closes[i-SEQ_LEN:i],
+                    self.opens[i-SEQ_LEN:i],
+                    self.highs[i-SEQ_LEN:i],
+                    self.lows[i-SEQ_LEN:i],
+                    self.volumes[i-SEQ_LEN:i],
+                ], axis=1)  # shape (SEQ_LEN, 5)
+                windows.append(x_seq_t)
+            if len(windows) > 0:
+                feats = np.concatenate(windows, axis=0)  # (N*SEQ_LEN, 5)
+                self.scaler = StandardScaler().fit(feats)
+                self.use_scaler = True
+        except Exception:
+            self.scaler = None
+            self.use_scaler = False
+
+    def __len__(self):
+        return len(self.samples)
+
     def __getitem__(self, idx: int):
         i, y = self.samples[idx]
         x_seq = np.stack([
@@ -93,7 +120,9 @@ class CandleDataset(Dataset):
             self.highs[i-SEQ_LEN:i],
             self.lows[i-SEQ_LEN:i],
             self.volumes[i-SEQ_LEN:i],
-        ], axis=0).astype(np.float32)
+        ], axis=0).astype(np.float32)  # (5, SEQ_LEN)
+        if self.use_scaler and self.scaler is not None:
+            x_seq = self.scaler.transform(x_seq.T).T.astype(np.float32)  # (5, SEQ_LEN)
         return torch.from_numpy(x_seq), int(y)
 
 class LSTMClassifier(nn.Module):
@@ -138,6 +167,12 @@ val = int(len(ds)*VAL_SPLIT)
 # fixed split
 gen = torch.Generator().manual_seed(SEED)
 train_ds, val_ds = random_split(ds,[len(ds)-val,val], generator=gen)
+if USE_STANDARD_SCALER:
+    try:
+        ds.fit_scaler_on_indices(val_ds.indices if False else train_ds.indices)
+        print("StandardScaler: fitted on train windows")
+    except Exception as ex:
+        print(f"! StandardScaler fit failed: {ex}")
 train_loader = DataLoader(train_ds,BATCH_SIZE,shuffle=True)
 val_loader   = DataLoader(val_ds,BATCH_SIZE)
 
@@ -234,6 +269,7 @@ best_pr_auc = -1.0; best_pnl_sum = -float('inf'); best_val_acc = -1.0
 lr_curve = []; pr_auc_curve = []; npr_auc_curve = []; pnl_curve_pct = []; val_acc_curve = []
 autotune_done = False
 autotune_epoch = None
+no_improve_epochs = 0
 
 for e in range(1, EPOCHS+1):
     t0 = time.time()
@@ -317,8 +353,13 @@ for e in range(1, EPOCHS+1):
 
     lr_curve.append(curr_lr); pr_auc_curve.append(float(pr_auc)); npr_auc_curve.append(float(npr_auc)); pnl_curve_pct.append(float(pnl_best_sum*100.0)); val_acc_curve.append(float(val_acc))
 
+    # metrics computed: roc_auc, f1, pr_auc, npr_auc
+
+    improved = False
     if pr_auc > best_pr_auc + 1e-6:
         best_pr_auc = pr_auc
+        improved = True
+        no_improve_epochs = 0
         if pr_auc > SAVE_MIN_PR_AUC:
             MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
             torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
@@ -337,6 +378,12 @@ for e in range(1, EPOCHS+1):
         torch.save({"model_state":model.state_dict(),"scaler":ds.scaler,
                     "meta":{"seq_len":SEQ_LEN,"pred_window":PRED_WINDOW,"threshold":best_pnl_thr}}, PNL_MODEL_PATH)
         print(f"✓ Сохранена новая лучшая модель по PnL (pnl@{best_pnl_thr:.4f}={best_pnl_sum*100:.2f}%) в {PNL_MODEL_PATH.resolve()}")
+
+    if not improved:
+        no_improve_epochs += 1
+    if USE_EARLY_STOP and no_improve_epochs >= EARLY_STOP_EPOCHS:
+        print(f"Early stop: no PR_AUC improvement for {EARLY_STOP_EPOCHS} epochs")
+        break
 
 # Post messages
 if best_pr_auc > -1.0:
