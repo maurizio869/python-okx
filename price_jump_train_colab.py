@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-25 19:20
+# Last modified (MSK): 2025-08-26 10:29
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
  Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -305,30 +305,41 @@ try:
     }
     plt.figure(figsize=(8,5))
     x = np.arange(1, len(lr_curve)+1)
+    tab10 = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf']
+    markers = ['o','s','^','D','x','+','v','<','>','P']
     colors = {}
-    for name, arr in curves.items():
+    for idx, (name, arr) in enumerate(curves.items()):
         if arr.size == 0:
             continue
         arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + PLOT_NORM_EPS)
-        line, = plt.plot(x[:len(arr_norm)], arr_norm, label=name)
+        line, = plt.plot(
+            x[:len(arr_norm)], arr_norm, label=name,
+            color=tab10[idx % len(tab10)], marker=markers[idx % len(markers)],
+            linewidth=1.8, alpha=0.95, markevery=max(1, len(arr_norm)//25)
+        )
         colors[name] = line.get_color()
-    # annotate max PR_AUC and max PnL%
+    # annotate max PR_AUC and max PnL% directly on points
     i_best_pr = None
     if len(pr_auc_curve) > 0:
         i_best_pr = int(np.nanargmax(pr_auc_curve))
         y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + PLOT_NORM_EPS)
-        plt.scatter([i_best_pr+1], [y_best_pr], color=colors.get('PR_AUC', '#2ca02c'), s=40)
-        plt.annotate(f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f}\n(ep={i_best_pr+1})",
-                     xy=(i_best_pr+1, y_best_pr), xytext=(8, 18), textcoords='offset points',
-                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
+        plt.scatter([i_best_pr+1], [y_best_pr], color=colors.get('PR_AUC', '#2ca02c'), s=30)
+        plt.annotate(
+            f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f}\n(ep={i_best_pr+1})",
+            xy=(i_best_pr+1, y_best_pr), xytext=(0, 0), textcoords='offset points',
+            ha='center', va='center', fontsize=7,
+            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6)
+        )
     if len(pnl_curve_pct) > 0:
         i_best_pnl = int(np.nanargmax(pnl_curve_pct))
         y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + PLOT_NORM_EPS)
-        plt.scatter([i_best_pnl+1], [y_best_pnl], color=colors.get('PnL%', '#d62728'), s=40)
-        dy = 36 if (i_best_pr is not None and i_best_pnl == i_best_pr) else 18
-        plt.annotate(f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
-                     xy=(i_best_pnl+1, y_best_pnl), xytext=(12, dy), textcoords='offset points',
-                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
+        plt.scatter([i_best_pnl+1], [y_best_pnl], color=colors.get('PnL%', '#d62728'), s=30)
+        plt.annotate(
+            f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
+            xy=(i_best_pnl+1, y_best_pnl), xytext=(0, 0), textcoords='offset points',
+            ha='center', va='center', fontsize=7,
+            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6)
+        )
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
@@ -337,7 +348,6 @@ try:
     plt.gca().text(0.98, 0.02, const_text, transform=plt.gca().transAxes,
                    ha='right', va='bottom', fontsize=8,
                    bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
-    # script filename at bottom-left
     try:
         _script_name = Path(__file__).name
     except Exception:
@@ -442,82 +452,51 @@ try:
     mean_arr = np.asarray(mean_ret_list)
     med_arr = np.asarray(median_ret_list)
     mdd_arr = np.asarray(mdd_list)
-    l1, = ax1.plot(thr_arr, comp_arr, label='comp_ret %', color='#1f77b4')
-    l2, = ax1.plot(thr_arr, pnl_arr, label='pnl_sum %', color='#ff7f0e')
-    l3, = ax2.plot(thr_arr, shp_arr, label='sharpe', color='#2ca02c', alpha=0.8)
-    l4, = ax1.plot(thr_arr, mean_arr, label='mean_ret %', color='#9467bd', alpha=0.9)
-    l5, = ax1.plot(thr_arr, med_arr, label='median_ret %', color='#8c564b', alpha=0.9)
-    l6, = ax1.plot(thr_arr, mdd_arr, label='max_drawdown %', color='#2ca02c', linestyle='--', alpha=0.9)
+    # normalize left-axis metrics to [0,1] for visibility
+    def _norm(a):
+        a = np.asarray(a, dtype=np.float64)
+        return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a) + PLOT_NORM_EPS) if a.size>0 else a
+    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr)
+    # unique colors/markers
+    tab10 = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b']
+    markers = ['o','s','^','D','x','+']
+    l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color=tab10[0], marker=markers[0], linewidth=1.8, alpha=0.95)
+    l2, = ax1.plot(thr_arr, pnl_n,  label='pnl_sum (norm)',  color=tab10[1], marker=markers[1], linewidth=1.8, alpha=0.95)
+    l3, = ax2.plot(thr_arr, shp_arr, label='sharpe', color=tab10[2], alpha=0.9)
+    l4, = ax1.plot(thr_arr, mean_n, label='mean_ret (norm)', color=tab10[3], marker=markers[2], linewidth=1.6, alpha=0.9)
+    l5, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color=tab10[4], marker=markers[3], linewidth=1.6, alpha=0.9)
+    l6, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color=tab10[5], marker=markers[4], linestyle='--', linewidth=1.6, alpha=0.9)
     if np.isfinite(best_comp_ret):
         idx = int(np.nanargmax(comp_arr))
         ax1.axvline(thr_arr[idx], color=l1.get_color(), linestyle='--', alpha=0.6)
-        ax1.scatter([thr_arr[idx]],[comp_arr[idx]], color=l1.get_color(), s=35)
-        ax1.annotate(
-            f"best comp={comp_arr[idx]:.2f}%\nthr={thr_arr[idx]:.4f}\ntrades={best_trades}\n"
-            f"pnl_sum={pnl_arr[idx]:.2f}%\nsharpe={shp_arr[idx]:.3f}\n"
-            f"mean={mean_arr[idx]:.2f}%\nmedian={med_arr[idx]:.2f}%\nmax_dd={mdd_arr[idx]:.2f}%",
-            xy=(thr_arr[idx], comp_arr[idx]), xytext=(10, 12), textcoords='offset points',
-            bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.7)
-        )
+        # annotate directly on points with smaller font
+        ax1.scatter([thr_arr[idx]],[comp_n[idx]], color=l1.get_color(), s=28)
+        ax1.annotate(f"best comp={comp_arr[idx]:.2f}%\nthr={thr_arr[idx]:.4f}\ntrades={best_trades}\npnl_sum={pnl_arr[idx]:.2f}%\nsharpe={shp_arr[idx]:.3f}\nmean={mean_arr[idx]:.2f}%\nmedian={med_arr[idx]:.2f}%\nmax_dd={mdd_arr[idx]:.2f}%",
+                     xy=(thr_arr[idx], comp_n[idx]), xytext=(0, 0), textcoords='offset points', ha='center', va='center', fontsize=7,
+                     bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7))
     ax1.set_xlabel('Threshold')
-    ax1.set_ylabel('% metrics (comp_ret, pnl_sum)')
-    ax2.set_ylabel('Sharpe')
+    ax1.set_ylabel('Normalized metrics (left)')
+    ax2.set_ylabel('Sharpe (right)')
     lines = [l1,l2,l3,l4,l5,l6]
     labels = [ln.get_label() for ln in lines]
     ax1.legend(lines, labels, loc='best')
     ax1.grid(True, alpha=0.3)
-    # constants box in bottom-right similar to curves plot
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
         f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}"
     )
-    ax1.text(0.98, 0.02, const_text, transform=ax1.transAxes,
-             ha='right', va='bottom', fontsize=8,
-             bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
-    # script filename at bottom-left
+    ax1.text(0.98, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     try:
         _script_name = Path(__file__).name
     except Exception:
         _script_name = "price_jump_train_colab.py"
-    ax1.text(0.02, 0.02, _script_name, transform=ax1.transAxes,
-             ha='left', va='bottom', fontsize=8,
-             bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
+    ax1.text(0.02, 0.02, _script_name, transform=ax1.transAxes, ha='left', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
     fig.tight_layout()
     from datetime import datetime
     import pytz
     msk = pytz.timezone('Europe/Moscow')
     ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
-    # annotate values at first, 1/6, 1/3, last points for each left-axis metric
-    try:
-        idx0 = 0
-        idx_last = len(thr_arr) - 1
-        idx_1_6 = max(0, min(idx_last, int(round(idx_last/6))))
-        idx_1_3 = max(0, min(idx_last, int(round(idx_last/3))))
-        def _ann(ax, xarr, yarr, idx, ha, va, offx, offy):
-            ax.annotate(f"{yarr[idx]:.2f}", xy=(xarr[idx], yarr[idx]), xytext=(offx, offy), textcoords='offset points', ha=ha, va=va,
-                        bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6))
-        # left side (first)
-        _ann(ax1, thr_arr, comp_arr, idx0, 'right', 'center', -12, 0)
-        _ann(ax1, thr_arr, pnl_arr, idx0, 'right', 'center', -12, -14)
-        _ann(ax1, thr_arr, mean_arr, idx0, 'right', 'center', -12, -28)
-        _ann(ax1, thr_arr, med_arr, idx0, 'right', 'center', -12, -42)
-        _ann(ax1, thr_arr, mdd_arr, idx0, 'right', 'center', -12, -56)
-        # 1/6 и 1/3 диапазона
-        for _i in (idx_1_6, idx_1_3):
-            _ann(ax1, thr_arr, comp_arr, _i, 'center', 'bottom', 0, 6)
-            _ann(ax1, thr_arr, pnl_arr, _i, 'center', 'bottom', 0, 20)
-            _ann(ax1, thr_arr, mean_arr, _i, 'center', 'bottom', 0, 34)
-            _ann(ax1, thr_arr, med_arr, _i, 'center', 'bottom', 0, 48)
-            _ann(ax1, thr_arr, mdd_arr, _i, 'center', 'bottom', 0, 62)
-        # right side (last)
-        _ann(ax1, thr_arr, comp_arr, idx_last, 'left', 'center', 12, 0)
-        _ann(ax1, thr_arr, pnl_arr, idx_last, 'left', 'center', 12, -14)
-        _ann(ax1, thr_arr, mean_arr, idx_last, 'left', 'center', 12, -28)
-        _ann(ax1, thr_arr, med_arr, idx_last, 'left', 'center', 12, -42)
-        _ann(ax1, thr_arr, mdd_arr, idx_last, 'left', 'center', 12, -56)
-    except Exception:
-        pass
     out_name = f'threshold_sweep_{ts}.png'
     fig.savefig(out_name, dpi=130)
     print(f"Saved threshold sweep plot to {Path(out_name).resolve()}")

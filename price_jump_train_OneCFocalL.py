@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-26 10:18
+# Last modified (MSK): 2025-08-26 10:29
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -399,30 +399,47 @@ try:
     eps = 1e-12
     plt.figure(figsize=(8,5))
     x = np.arange(1, len(lr_curve)+1)
+    # unique styles
+    style_names = list(curves.keys())
+    tab10 = [
+        '#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd',
+        '#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf'
+    ]
+    markers = ['o','s','^','D','x','+','v','<','>','P']
     colors = {}
-    for name, arr in curves.items():
+    for idx, (name, arr) in enumerate(curves.items()):
         arr = np.asarray(arr, dtype=np.float64)
+        if arr.size == 0:
+            continue
         arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + eps)
-        line, = plt.plot(x, arr_norm, label=name)
+        line, = plt.plot(
+            x[:len(arr_norm)], arr_norm, label=name,
+            color=tab10[idx % len(tab10)], marker=markers[idx % len(markers)],
+            linewidth=1.8, alpha=0.95, markevery=max(1, len(arr_norm)//25)
+        )
         colors[name] = line.get_color()
-    # annotate max PR_AUC and max PnL%
+    # annotate max PR_AUC and max PnL% directly on points
     if len(pr_auc_curve) > 0:
         i_best_pr = int(np.nanargmax(pr_auc_curve))
         y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + eps)
-        plt.scatter([i_best_pr+1], [y_best_pr], color=colors.get('PR_AUC', '#2ca02c'), s=40)
-        plt.annotate(f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f}\n(ep={i_best_pr+1})",
-                     xy=(i_best_pr+1, y_best_pr), xytext=(5, 12), textcoords='offset points',
-                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
+        plt.scatter([i_best_pr+1], [y_best_pr], color=colors.get('PR_AUC', '#2ca02c'), s=30)
+        plt.annotate(
+            f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f}\n(ep={i_best_pr+1})",
+            xy=(i_best_pr+1, y_best_pr), xytext=(0, 0), textcoords='offset points',
+            ha='center', va='center', fontsize=7,
+            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6)
+        )
     if len(pnl_curve_pct) > 0:
         i_best_pnl = int(np.nanargmax(pnl_curve_pct))
         y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + eps)
-        plt.scatter([i_best_pnl+1], [y_best_pnl], color=colors.get('PnL%', '#d62728'), s=40)
-        plt.annotate(f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
-                     xy=(i_best_pnl+1, y_best_pnl), xytext=(5, -28), textcoords='offset points',
-                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.6))
-    # mark autotune epoch with dashed vertical line
-    if autotune_epoch is not None:
-        plt.axvline(autotune_epoch, color='#999999', linestyle='--', linewidth=1.0, alpha=0.7)
+        plt.scatter([i_best_pnl+1], [y_best_pnl], color=colors.get('PnL%', '#d62728'), s=30)
+        plt.annotate(
+            f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
+            xy=(i_best_pnl+1, y_best_pnl), xytext=(0, 0), textcoords='offset points',
+            ha='center', va='center', fontsize=7,
+            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6)
+        )
+    # constants box
     const_text = (
         f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
         f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
@@ -433,7 +450,6 @@ try:
     plt.gca().text(0.98, 0.02, const_text, transform=plt.gca().transAxes,
                    ha='right', va='bottom', fontsize=8,
                    bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
-    # script filename at bottom-left
     try:
         _script_name = Path(__file__).name
     except Exception:
@@ -525,7 +541,6 @@ try:
                   f"WD={WEIGHT_DECAY}\nDROPOUT={DEFAULT_DROPOUT:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}")
 
     ax1.text(0.98, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
-    # script filename at bottom-left
     try:
         _script_name = Path(__file__).name
     except Exception:
