@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-26 13:10
+# Last modified (MSK): 2025-08-26 13:30
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
  Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -326,6 +326,37 @@ try:
     ax.text(0.98, 0.02, const_text, transform=ax.transAxes,
             ha='right', va='bottom', fontsize=8,
             bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    # separated max annotations above axes with simple collision avoidance
+    try:
+        xlen = max(1, len(lr_curve))
+        pr_ann = None; pnl_ann = None
+        if len(pr_auc_curve) > 0:
+            i_best_pr = int(np.nanargmax(pr_auc_curve))
+            y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + PLOT_NORM_EPS)
+            x_frac_pr = (i_best_pr + 1) / xlen
+            pr_ann = ax.annotate(
+                f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f} (ep={i_best_pr+1})",
+                xy=(i_best_pr+1, y_best_pr), xycoords='data',
+                xytext=(x_frac_pr, 1.06), textcoords='axes fraction',
+                ha='center', va='bottom', fontsize=7,
+                bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.8))
+        if len(pnl_curve_pct) > 0:
+            i_best_pnl = int(np.nanargmax(pnl_curve_pct))
+            y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + PLOT_NORM_EPS)
+            x_frac_pnl = (i_best_pnl + 1) / xlen
+            pnl_ann = ax.annotate(
+                f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}% (ep={i_best_pnl+1})",
+                xy=(i_best_pnl+1, y_best_pnl), xycoords='data',
+                xytext=(x_frac_pnl, 1.12), textcoords='axes fraction',
+                ha='center', va='bottom', fontsize=7,
+                bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.8))
+        if pr_ann is not None and pnl_ann is not None:
+            (xpr, ypr) = pr_ann.get_position(); (xpn, ypn) = pnl_ann.get_position()
+            if abs(xpr - xpn) < 0.08:
+                pr_ann.set_position((xpr - 0.06, ypr))
+                pnl_ann.set_position((xpn + 0.06, ypn))
+    except Exception:
+        pass
     plt.legend(loc='lower right', bbox_to_anchor=(0.80, 0.02))
     try:
         _script_name = Path(__file__).name
@@ -449,8 +480,8 @@ try:
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
         f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nUSE_STANDARD_SCALER=True"
     )
-    ax1.text(0.98, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
-    ax1.legend(loc='lower right', bbox_to_anchor=(0.98, 0.26))
+    ax1.text(0.94, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    ax1.legend(loc='lower right', bbox_to_anchor=(0.94, 0.26))
     ax1.grid(True, alpha=0.3)
     # fixed-point annotations at thr_min, thirds, thr_max
     try:
