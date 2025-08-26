@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-26 13:46
+# Last modified (MSK): 2025-08-26 15:42
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -473,7 +473,21 @@ try:
             ha='right', va='bottom', fontsize=8,
             bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     # legend strictly to the left of constants box (bottom-right area)
-    plt.legend(loc='lower right', bbox_to_anchor=(0.80, 0.02))
+    leg = plt.legend(loc='lower right', bbox_to_anchor=(0.80, 0.02))
+    # post-draw realignment: right edge of legend ≈ left edge of constants − margin
+    try:
+        fig = plt.gcf(); fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        const_bb = ax.texts[-1].get_window_extent(renderer=renderer)
+        leg_bb = leg.get_window_extent(renderer=renderer)
+        # convert const left to axes coords
+        const_left_axes = ax.transAxes.inverted().transform((const_bb.x0, const_bb.y0))[0]
+        # set legend anchor so that legend right aligns to const_left_axes - margin
+        margin = 0.01
+        new_x = max(0.02, const_left_axes - margin)
+        leg.set_bbox_to_anchor((new_x, 0.02), transform=ax.transAxes)
+    except Exception:
+        pass
     try:
         _script_name = Path(__file__).name
     except Exception:
@@ -555,10 +569,19 @@ try:
     l4, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color='#7f7f7f', linestyle='--', linewidth=1.6)
     l5, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color='#2ca02c', linestyle='-', linewidth=1.6)
     l6, = ax2.plot(thr_arr, shp_arr, label='Sharpe', color='#9467bd', alpha=0.9)
-    # annotate best comp
+    # add Trades on separate invisible y-axis
+    ax3 = ax1.twinx(); ax3.get_yaxis().set_visible(False)
+    ax3.plot(thr_arr, np.asarray(trades_list), label='Trades', color='#8c564b')
+    # detailed max CompRet annotation (as раньше)
     if np.isfinite(best_comp):
         idx = int(np.nanargmax(comp_arr))
         ax1.axvline(thr_arr[idx], color=l1.get_color(), linestyle='--', alpha=0.6)
+        ax1.scatter([thr_arr[idx]],[comp_n[idx]], color=l1.get_color(), s=28)
+        ann = (f"max CompRet={comp_arr[idx]:.2f}%\n(thr={thr_arr[idx]:.4f})\ntrades={trades_list[idx]}\n"
+               f"pnl_sum={pnl_arr[idx]:.2f}%\nsharpe={shp_arr[idx]:.3f}\nmean={mean_arr[idx]:.2f}%\n"
+               f"median={med_arr[idx]:.2f}%\nmax_dd={mdd_arr[idx]:.2f}%")
+        ax1.annotate(ann, xy=(thr_arr[idx], comp_n[idx]), xytext=(10, 12), textcoords='offset points',
+                     bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.7))
     # constants box bottom-right inside axes
     const_text = (f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
                   f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
@@ -567,7 +590,17 @@ try:
                   f"\nauto_thr={AUTOTUNE_PRAUC_THRESHOLD}\nauto_gamma={AUTOTUNE_GAMMA}\nauto_WD×{AUTOTUNE_WD_MULT}\nauto_beta1={AUTOTUNE_BETA1}\nAPPLY_BETA={AUTOTUNE_APPLY_BETA}\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}")
     ax1.text(0.94, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     # legend strictly above constants box (can protrude upward)
-    ax1.legend(loc='lower right', bbox_to_anchor=(0.94, 0.26))
+    leg2 = ax1.legend(loc='lower right', bbox_to_anchor=(0.94, 0.26))
+    # post-draw: place legend just above constants box
+    try:
+        fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        const_bb = ax1.texts[-1].get_window_extent(renderer=renderer)
+        const_top_axes = ax1.transAxes.inverted().transform((const_bb.x0, const_bb.y1))[1]
+        margin_y = 0.02
+        leg2.set_bbox_to_anchor((0.94, const_top_axes + margin_y), transform=ax1.transAxes)
+    except Exception:
+        pass
     ax1.grid(True, alpha=0.3)
     try:
         _script_name = Path(__file__).name

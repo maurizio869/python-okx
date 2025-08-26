@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-26 13:46
+# Last modified (MSK): 2025-08-26 15:42
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -349,7 +349,17 @@ try:
     ax.text(0.98, 0.02, const_text, transform=ax.transAxes,
             ha='right', va='bottom', fontsize=8,
             bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
-    plt.legend(loc='lower right', bbox_to_anchor=(0.80, 0.02))
+    leg = plt.legend(loc='lower right', bbox_to_anchor=(0.80, 0.02))
+    try:
+        fig = plt.gcf(); fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        const_bb = ax.texts[-1].get_window_extent(renderer=renderer)
+        const_left_axes = ax.transAxes.inverted().transform((const_bb.x0, const_bb.y0))[0]
+        margin = 0.01
+        new_x = max(0.02, const_left_axes - margin)
+        leg.set_bbox_to_anchor((new_x, 0.02), transform=ax.transAxes)
+    except Exception:
+        pass
     try:
         _script_name = Path(__file__).name
     except Exception:
@@ -484,8 +494,16 @@ try:
         f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nUSE_STANDARD_SCALER=True"
     )
     ax1.text(0.94, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
-    ax1.legend(loc='lower right', bbox_to_anchor=(0.94, 0.26))
-    ax1.grid(True, alpha=0.3)
+    leg2 = ax1.legend(loc='lower right', bbox_to_anchor=(0.94, 0.26))
+    try:
+        fig = plt.gcf(); fig.canvas.draw()
+        renderer = fig.canvas.get_renderer()
+        const_bb = ax1.texts[-1].get_window_extent(renderer=renderer)
+        const_top_axes = ax1.transAxes.inverted().transform((const_bb.x0, const_bb.y1))[1]
+        margin_y = 0.02
+        leg2.set_bbox_to_anchor((0.94, const_top_axes + margin_y), transform=ax1.transAxes)
+    except Exception:
+        pass
     # fixed-point annotations at thr_min, thirds, thr_max
     try:
         thr_min_v = float(THR_SWEEP_MIN); thr_max_v = float(THR_SWEEP_MAX)
