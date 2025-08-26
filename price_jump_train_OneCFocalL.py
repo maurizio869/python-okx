@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-26 13:40
+# Last modified (MSK): 2025-08-26 13:46
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -429,6 +429,8 @@ try:
         i_best_pr = int(np.nanargmax(pr_auc_curve))
         y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + eps)
         x_frac_pr = (i_best_pr + 1) / xlen
+        # show point on curve
+        plt.scatter([i_best_pr+1], [y_best_pr], color=colors.get('PR_AUC', '#2ca02c'), s=32)
         pr_ann = ax.annotate(
             f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f} (ep={i_best_pr+1})",
             xy=(i_best_pr+1, y_best_pr), xycoords='data',
@@ -439,6 +441,8 @@ try:
         i_best_pnl = int(np.nanargmax(pnl_curve_pct))
         y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + eps)
         x_frac_pnl = (i_best_pnl + 1) / xlen
+        # show point on curve
+        plt.scatter([i_best_pnl+1], [y_best_pnl], color=colors.get('PnL%', '#d62728'), s=32)
         pnl_ann = ax.annotate(
             f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}% (ep={i_best_pnl+1})",
             xy=(i_best_pnl+1, y_best_pnl), xycoords='data',
@@ -579,17 +583,17 @@ try:
         thr_min_v = float(thr_min); thr_max_v = float(thr_max)
         delta = thr_max_v - thr_min_v
         t_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
-        def _annot_series(ax, xvals, yvals, color):
+        def _annot_series(ax, xvals, yvals, color, idx_offset):
             for t in t_points:
                 idx = int(np.argmin(np.abs(xvals - t)))
                 ax.scatter([xvals[idx]],[yvals[idx]], color=color, s=14)
-                ax.annotate(f"{yvals[idx]:.2f}", xy=(xvals[idx], yvals[idx]), xytext=(0,0), textcoords='offset points', ha='center', va='center', fontsize=7,
-                            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7))
-        _annot_series(ax1, thr_arr, comp_n, l1.get_color())
-        _annot_series(ax1, thr_arr, pnl_n,  l2.get_color())
-        _annot_series(ax1, thr_arr, mean_n, l3.get_color())
-        _annot_series(ax1, thr_arr, med_n,  l4.get_color())
-        _annot_series(ax1, thr_arr, mdd_n,  l5.get_color())
+                ax.annotate(f"{yvals[idx]:.2f}", xy=(xvals[idx], yvals[idx]), xytext=(0, idx_offset*12), textcoords='offset points', ha='center', va='center', fontsize=7,
+                            color=color, bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7))
+        _annot_series(ax1, thr_arr, comp_n, l1.get_color(), 0)
+        _annot_series(ax1, thr_arr, pnl_n,  l2.get_color(), 1)
+        _annot_series(ax1, thr_arr, mean_n, l3.get_color(), 2)
+        _annot_series(ax1, thr_arr, med_n,  l4.get_color(), 3)
+        _annot_series(ax1, thr_arr, mdd_n,  l5.get_color(), 4)
     except Exception:
         pass
     out_name = f'threshold_sweep_{ts}.png'; fig.savefig(out_name, dpi=130)
