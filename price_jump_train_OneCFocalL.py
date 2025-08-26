@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-26 13:10
+# Last modified (MSK): 2025-08-26 13:13
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -420,6 +420,12 @@ try:
     # annotate max PR_AUC and max PnL above axes, avoid overlap
     pr_ann = None; pnl_ann = None
     xlen = max(1, len(lr_curve))
+    # vertical dashed line for autotune epoch
+    try:
+        if autotune_epoch is not None:
+            ax.axvline(autotune_epoch, color='#999999', linestyle='--', linewidth=1.0, alpha=0.7)
+    except Exception:
+        pass
     if len(pr_auc_curve) > 0:
         i_best_pr = int(np.nanargmax(pr_auc_curve))
         y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + eps)
