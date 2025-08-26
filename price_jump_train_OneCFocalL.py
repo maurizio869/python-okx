@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-26 10:08
+# Last modified (MSK): 2025-08-26 10:18
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -260,7 +260,7 @@ val_indices = np.asarray(val_ds.indices, dtype=np.int64)
 entry_idx = val_indices + SEQ_LEN
 entry_opens = ds.opens[entry_idx]; exit_closes = ds.closes[entry_idx + PRED_WINDOW]
 ret_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
-thr_min, thr_max, thr_step = 0.15, 0.85, 0.0025
+thr_min, thr_max, thr_step = 0.15, 0.99, 0.0025
 last_best_thr = 0.565
 
 best_pr_auc = -1.0; best_pnl_sum = -float('inf'); best_val_acc = -1.0
@@ -330,16 +330,13 @@ for e in range(1, EPOCHS+1):
                 r=ret_val_fixed[m]
                 comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
                 sret=float(np.sum(r))
-        meanp = float(np.mean(r)*100.0)
-        medp  = float(np.median(r)*100.0)
-        ent = entry_idx[m]
-        order = np.argsort(ent)
-        r_sorted = r[order]
-        equity = np.cumprod(1.0 + r_sorted.astype(np.float64))
-        run_max = np.maximum.accumulate(equity)
-        dd = np.min(equity / (run_max + 1e-12) - 1.0) if equity.size>0 else 0.0
-        mddp = float(abs(dd) * 100.0)
-    if comp>best_comp: best_comp=comp; best_thr=float(t); best_trades=n; best_sum=sret; last_best_thr = best_thr; pnl_best_sum = best_sum; trades_best = best_trades
+            # update best inside the loop
+            if comp>best_comp:
+                best_comp=comp; best_thr=float(t); best_trades=n; best_sum=sret
+        # after loop, set best metrics
+        last_best_thr = best_thr
+        trades_best = best_trades
+        pnl_best_sum = best_sum
     else:
         m=(val_probs_np>=last_best_thr); trades_best=int(m.sum())
         pnl_best_sum = float(np.sum(ret_val_fixed[m])) if trades_best>0 else 0.0
@@ -464,7 +461,7 @@ with torch.no_grad():
         pred=(prob1>=0.5).to(torch.long); y_cpu=yb.to(torch.long)
         val_targets_all.extend(y_cpu.tolist()); val_probs_all.extend(prob1.tolist()); val_preds_all.extend(pred.cpu().tolist())
 ret_val = exit_closes/np.maximum(entry_opens,1e-12)-1.0
-thr_min,thr_max,thr_step=0.15,0.85,0.0025
+thr_min,thr_max,thr_step=0.15,0.99,0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
 thresholds=np.arange(thr_min,thr_max+1e-12,thr_step)
 thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]; trades_list=[]; mean_ret_list=[]; median_ret_list=[]; mdd_list=[]
