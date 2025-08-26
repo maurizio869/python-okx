@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-26 10:51
+# Last modified (MSK): 2025-08-26 13:21
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -335,30 +335,31 @@ try:
     eps = 1e-12
     plt.figure(figsize=(8,5))
     x = np.arange(1, 1+1)
-    for name, arr in curves.items():
+    ax = plt.gca()
+    for idx, (name, arr) in enumerate(curves.items()):
         if arr.size == 0:
             continue
         arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + eps)
-        plt.plot(x[:len(arr_norm)], arr_norm, label=name)
+        plt.plot(x[:len(arr_norm)], arr_norm, label=name, linewidth=1.8, alpha=0.95)
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
         f"PNL_thr={PNL_FIXED_THRESHOLD}\nLOSS=Focal(gamma={FOCAL_GAMMA}, alpha_neg={ALPHA_NEG}, alpha_pos={ALPHA_POS})\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nUSE_STANDARD_SCALER=True"
     )
-    plt.gca().text(1.02, 0.02, const_text, transform=plt.gca().transAxes,
-                   ha='right', va='bottom', fontsize=8,
-                   bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7), clip_on=False)
-    # script filename at bottom-left
+    ax.text(0.98, 0.02, const_text, transform=ax.transAxes,
+            ha='right', va='bottom', fontsize=8,
+            bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    plt.legend(loc='lower right', bbox_to_anchor=(0.80, 0.02))
     try:
         _script_name = Path(__file__).name
     except Exception:
         _script_name = "price_jump_train_colab_FOCAL_LOSS.py"
-    plt.gca().text(0.02, 0.02, _script_name, transform=plt.gca().transAxes,
-                   ha='left', va='bottom', fontsize=8,
-                   bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
+    ax.text(0.02, 0.02, _script_name, transform=ax.transAxes,
+            ha='left', va='bottom', fontsize=8,
+            bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
     plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]')
     plt.title('Training curves (normalized)')
-    plt.grid(True, alpha=0.3); plt.legend(); plt.tight_layout = plt.tight_layout
+    plt.grid(True, alpha=0.3); plt.tight_layout = plt.tight_layout
     plt.tight_layout()
     from datetime import datetime
     import pytz
@@ -466,47 +467,43 @@ try:
         a = np.asarray(a, dtype=np.float64)
         return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a) + 1e-12) if a.size>0 else a
     comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr)
-    tab10 = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b']
-    markers = ['o','s','^','D','x','+']
-    l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color=tab10[0], marker=markers[0], linewidth=1.8, alpha=0.95)
-    l2, = ax1.plot(thr_arr, pnl_n,  label='pnl_sum (norm)',  color=tab10[1], marker=markers[1], linewidth=1.8, alpha=0.95)
-    l3, = ax2.plot(thr_arr, shp_arr, label='sharpe', color=tab10[2], alpha=0.9)
-    l4, = ax1.plot(thr_arr, mean_n, label='mean_ret (norm)', color=tab10[3], marker=markers[2], linewidth=1.6, alpha=0.9)
-    l5, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color=tab10[4], marker=markers[3], linewidth=1.6, alpha=0.9)
-    l6, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color=tab10[5], marker=markers[4], linestyle='--', linewidth=1.6, alpha=0.9)
-    if np.isfinite(best_comp_ret):
-        idx = int(np.nanargmax(comp_arr))
-        ax1.axvline(thr_arr[idx], color=l1.get_color(), linestyle='--', alpha=0.6)
-        ax1.scatter([thr_arr[idx]],[comp_n[idx]], color=l1.get_color(), s=28)
-        ax1.annotate(
-            f"best comp={comp_arr[idx]:.2f}%\nthr={thr_arr[idx]:.4f}\ntrades={best_trades}\npnl_sum={pnl_arr[idx]:.2f}%\nsharpe={shp_arr[idx]:.3f}\nmean={mean_arr[idx]:.2f}%\nmedian={med_arr[idx]:.2f}%\nmax_dd={mdd_arr[idx]:.2f}%",
-            xy=(thr_arr[idx], comp_n[idx]), xytext=(0, 0), textcoords='offset points', ha='center', va='center', fontsize=7,
-            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7)
-        )
+    # styles
+    l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color='#1f77b4', linewidth=1.8)
+    l2, = ax1.plot(thr_arr, pnl_n,  label='pnl_sum (norm)',  color='#ff7f0e', linewidth=1.8)
+    l3, = ax1.plot(thr_arr, mean_n, label='mean_ret (norm)', color='#000000', linestyle='--', linewidth=1.6)
+    l4, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color='#7f7f7f', linestyle='--', linewidth=1.6)
+    l5, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color='#2ca02c', linestyle='-', linewidth=1.6)
+    l6, = ax2.plot(thr_arr, shp_arr, label='Sharpe', color='#9467bd', alpha=0.9)
     ax1.set_xlabel('Threshold')
     ax1.set_ylabel('Normalized metrics (left)')
     ax2.set_ylabel('Sharpe (right)')
-    lines = [l1,l2,l3,l4,l5,l6]
-    labels = [ln.get_label() for ln in lines]
-    ax1.legend(lines, labels, loc='best')
-    ax1.grid(True, alpha=0.3)
-    # constants box bottom-right (+autotune if present)
+    # constants box bottom-right; legend strictly above it
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
-        f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}"
+        f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nUSE_STANDARD_SCALER=True"
     )
     ax1.text(0.98, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    ax1.legend(loc='lower right', bbox_to_anchor=(0.98, 0.26))
+    ax1.grid(True, alpha=0.3)
+    # fixed-point annotations at thr_min, thirds, thr_max
     try:
-        _script_name = Path(__file__).name
+        thr_min_v = float(THR_SWEEP_MIN); thr_max_v = float(THR_SWEEP_MAX)
+        delta = thr_max_v - thr_min_v
+        t_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
+        def _annot_series(ax, xvals, yvals, color):
+            for t in t_points:
+                idx = int(np.argmin(np.abs(xvals - t)))
+                ax.scatter([xvals[idx]],[yvals[idx]], color=color, s=14)
+                ax.annotate(f"{yvals[idx]:.2f}", xy=(xvals[idx], yvals[idx]), xytext=(0,0), textcoords='offset points', ha='center', va='center', fontsize=7,
+                            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7))
+        _annot_series(ax1, thr_arr, comp_n, l1.get_color())
+        _annot_series(ax1, thr_arr, pnl_n,  l2.get_color())
+        _annot_series(ax1, thr_arr, mean_n, l3.get_color())
+        _annot_series(ax1, thr_arr, med_n,  l4.get_color())
+        _annot_series(ax1, thr_arr, mdd_n,  l5.get_color())
     except Exception:
-        _script_name = "price_jump_train_colab_FOCAL_LOSS.py"
-    ax1.text(0.02, 0.02, _script_name, transform=ax1.transAxes, ha='left', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
-    fig.tight_layout()
-    from datetime import datetime
-    import pytz
-    msk = pytz.timezone('Europe/Moscow')
-    ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
+        pass
     out_name = f'threshold_sweep_{ts}.png'
     fig.savefig(out_name, dpi=130)
     print(f"Saved threshold sweep plot to {Path(out_name).resolve()}")

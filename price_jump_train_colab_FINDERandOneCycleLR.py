@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-26 10:51
+# Last modified (MSK): 2025-08-26 13:21
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -425,42 +425,42 @@ try:
     mdd_arr  = np.asarray(mdd_list)
     thr_arr  = np.asarray(thr_list)
     comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr)
-    tab10 = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b']
-    markers = ['o','s','^','D','x','+']
-    l1, = ax1.plot(thr_arr, pnl_n,  label='pnl_sum (norm)',  color=tab10[1], marker=markers[1], linewidth=1.8, alpha=0.95)
-    l2, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color=tab10[0], marker=markers[0], linewidth=1.8, alpha=0.95)
-    l3, = ax1.plot(thr_arr, mean_n, label='mean_ret (norm)', color=tab10[3], marker=markers[2], linewidth=1.6, alpha=0.9)
-    l4, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color=tab10[4], marker=markers[3], linewidth=1.6, alpha=0.9)
-    l5, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color=tab10[5], marker=markers[4], linestyle='--', linewidth=1.6, alpha=0.9)
-    l6, = ax2.plot(thr_arr, np.asarray(sharpe_list), label='Sharpe', color=tab10[2], alpha=0.9)
-    if np.isfinite(best_comp):
-        idx = int(np.nanargmax(comp_arr))
-        ax1.axvline(thr_arr[idx], color=l2.get_color(), linestyle='--', alpha=0.6)
-        ax1.scatter([thr_arr[idx]],[comp_n[idx]], color=l2.get_color(), s=28)
-        ax1.annotate(
-            f"max CompRet={comp_arr[idx]:.2f}%\n(thr={thr_arr[idx]:.4f})\ntrades={best_trades}\npnl_sum={pnl_arr[idx]:.2f}%\nsharpe={sharpe_list[idx]:.3f}\nmean={mean_arr[idx]:.2f}%\nmedian={med_arr[idx]:.2f}%\nmax_dd={mdd_arr[idx]:.2f}%",
-            xy=(thr_arr[idx], comp_n[idx]), xytext=(0, 0), textcoords='offset points', ha='center', va='center', fontsize=7,
-            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7)
-        )
-    lines1, labels1 = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    lines = lines1 + lines2
-    labels = labels1 + labels2
-    ax1.legend(lines, labels, loc='best')
-    ax1.grid(True, alpha=0.3)
+    # styles
+    l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color='#1f77b4', linewidth=1.8)
+    l2, = ax1.plot(thr_arr, pnl_n,  label='pnl_sum (norm)',  color='#ff7f0e', linewidth=1.8)
+    l3, = ax1.plot(thr_arr, mean_n, label='mean_ret (norm)', color='#000000', linestyle='--', linewidth=1.6)
+    l4, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color='#7f7f7f', linestyle='--', linewidth=1.6)
+    l5, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color='#2ca02c', linestyle='-', linewidth=1.6)
+    l6, = ax2.plot(thr_arr, np.asarray(sharpe_list), label='Sharpe', color='#9467bd', alpha=0.9)
+    # constants box bottom-right; legend strictly above it
     const_text = (
         f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
         f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
         f"pct_start={ONECYCLE_PCT_START}\ndiv_factor={ONECYCLE_DIV_FACTOR}\nfinal_div={ONECYCLE_FINAL_DIV_FACTOR}\n"
-        f"WD={WEIGHT_DECAY}\nDROPOUT={DROPOUT_P:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}"
+        f"WD={WEIGHT_DECAY}\nDROPOUT={DROPOUT_P:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nUSE_STANDARD_SCALER=False"
     )
-    ax1.text(1.02, 0.02, const_text + f"\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nUSE_STANDARD_SCALER=False", transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7), clip_on=False)
+    ax1.text(0.98, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    ax1.legend(loc='lower right', bbox_to_anchor=(0.98, 0.26))
+    ax1.grid(True, alpha=0.3)
+    # fixed-point annotations at thr_min, thirds, thr_max
     try:
-        _script_name = Path(__file__).name
+        thr_min_v = float(thr_min); thr_max_v = float(thr_max)
+        delta = thr_max_v - thr_min_v
+        t_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
+        def _annot_series(ax, xvals, yvals, color):
+            for t in t_points:
+                idx = int(np.argmin(np.abs(xvals - t)))
+                ax.scatter([xvals[idx]],[yvals[idx]], color=color, s=14)
+                ax.annotate(f"{yvals[idx]:.2f}", xy=(xvals[idx], yvals[idx]), xytext=(0,0), textcoords='offset points', ha='center', va='center', fontsize=7,
+                            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7))
+        _annot_series(ax1, thr_arr, comp_n, l1.get_color())
+        _annot_series(ax1, thr_arr, pnl_n,  l2.get_color())
+        _annot_series(ax1, thr_arr, mean_n, l3.get_color())
+        _annot_series(ax1, thr_arr, med_n,  l4.get_color())
+        _annot_series(ax1, thr_arr, mdd_n,  l5.get_color())
     except Exception:
-        _script_name = "price_jump_train_colab_FINDERandOneCycleLR.py"
-    ax1.text(0.02, 0.02, _script_name, transform=ax1.transAxes, ha='left', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
-    fig.tight_layout()
+        pass
+    # save
     try:
         import pytz
         msk = pytz.timezone('Europe/Moscow')
@@ -471,8 +471,7 @@ try:
     except Exception as ex:
         print(f"! Не удалось сохранить график: {ex}")
     finally:
-        plt.show()
-        plt.close(fig)
+        plt.show(); plt.close(fig)
 except Exception as ex:
     print(f"! Не удалось построить график перебора порога: {ex}")
 # finalize meta
@@ -496,8 +495,7 @@ try:
     eps = 1e-12
     plt.figure(figsize=(8,5))
     x = np.arange(1, len(lr_curve)+1)
-    tab10 = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf']
-    markers = ['o','s','^','D','x','+','v','<','>','P']
+    tab10 = ['#1f77b4','#ff7f0e','#2ca02c','#d62728']
     colors = {}
     for idx, (name, arr) in enumerate(curves.items()):
         arr = np.asarray(arr, dtype=np.float64)
@@ -506,40 +504,19 @@ try:
         arr_norm = (arr - np.nanmin(arr)) / (np.nanmax(arr) - np.nanmin(arr) + eps)
         line, = plt.plot(
             x[:len(arr_norm)], arr_norm, label=name,
-            color=tab10[idx % len(tab10)], marker=markers[idx % len(markers)],
-            linewidth=1.8, alpha=0.95, markevery=max(1, len(arr_norm)//25)
+            color=tab10[idx % len(tab10)], linewidth=1.8, alpha=0.95
         )
         colors[name] = line.get_color()
-    if len(pr_auc_curve) > 0:
-        i_best_pr = int(np.nanargmax(pr_auc_curve))
-        y_best_pr = (pr_auc_curve[i_best_pr] - np.nanmin(pr_auc_curve)) / (np.nanmax(pr_auc_curve) - np.nanmin(pr_auc_curve) + eps)
-        plt.scatter([i_best_pr+1], [y_best_pr], color=colors.get('PR_AUC', '#2ca02c'), s=30)
-        plt.annotate(
-            f"max PR_AUC={pr_auc_curve[i_best_pr]:.3f}\n(ep={i_best_pr+1})",
-            xy=(i_best_pr+1, y_best_pr), xytext=(0, 0), textcoords='offset points',
-            ha='center', va='center', fontsize=7,
-            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6)
-        )
-    if len(pnl_curve_pct) > 0:
-        i_best_pnl = int(np.nanargmax(pnl_curve_pct))
-        y_best_pnl = (pnl_curve_pct[i_best_pnl] - np.nanmin(pnl_curve_pct)) / (np.nanmax(pnl_curve_pct) - np.nanmin(pnl_curve_pct) + eps)
-        plt.scatter([i_best_pnl+1], [y_best_pnl], color=colors.get('PnL%', '#d62728'), s=30)
-        plt.annotate(
-            f"max PnL={pnl_curve_pct[i_best_pnl]:.2f}%\n(ep={i_best_pnl+1})",
-            xy=(i_best_pnl+1, y_best_pnl), xytext=(0, 0), textcoords='offset points',
-            ha='center', va='center', fontsize=7,
-            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.6)
-        )
+    ax = plt.gca()
     const_text = (
         f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
         f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
         f"pct_start={ONECYCLE_PCT_START}\ndiv_factor={ONECYCLE_DIV_FACTOR}\nfinal_div={ONECYCLE_FINAL_DIV_FACTOR}\n"
         f"WD={WEIGHT_DECAY}\nDROPOUT={DROPOUT_P:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}\n"
-        f"best_lr={best_lr:.2e}"
+        f"best_lr={best_lr:.2e}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nUSE_STANDARD_SCALER=False"
     )
-    plt.gca().text(0.98, 0.02, const_text, transform=plt.gca().transAxes,
-                   ha='right', va='bottom', fontsize=8,
-                   bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    ax.text(0.98, 0.02, const_text, transform=ax.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    plt.legend(loc='lower right', bbox_to_anchor=(0.80, 0.02))
     try:
         _script_name = Path(__file__).name
     except Exception:
