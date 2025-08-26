@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-26 10:29
+# Last modified (MSK): 2025-08-26 10:51
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -64,7 +64,8 @@ AUTOTUNE_PRAUC_THRESHOLD = 0.601
 AUTOTUNE_GAMMA = 1.4
 AUTOTUNE_WD_MULT = 1.5
 AUTOTUNE_BETA1 = 0.8
-AUTOTUNE_APPLY_BETA1 = True
+AUTOTUNE_APPLY_BETA = True
+AUTOTUNE_APPLY_GRADCLIP = False
 
 def load_dataframe(path: Path) -> pd.DataFrame:
     with open(path) as f: raw = json.load(f)
@@ -302,7 +303,7 @@ for e in range(1, EPOCHS+1):
         lossf.gamma = AUTOTUNE_GAMMA
         for pg in opt.param_groups:
             pg['weight_decay'] *= AUTOTUNE_WD_MULT
-        if AUTOTUNE_APPLY_BETA1:
+        if AUTOTUNE_APPLY_BETA:
             try:
                 beta2 = pg.get('betas', (0.9, 0.999))[1]
                 pg['betas'] = (AUTOTUNE_BETA1, beta2)
@@ -446,10 +447,12 @@ try:
         f"pct_start={ONECYCLE_PCT_START}\ndiv_factor={ONECYCLE_DIV_FACTOR}\nfinal_div={ONECYCLE_FINAL_DIV_FACTOR}\n"
         f"WD={WEIGHT_DECAY}\nDROPOUT={DEFAULT_DROPOUT:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}"
         f"\nauto_thr={AUTOTUNE_PRAUC_THRESHOLD}\nauto_gamma={AUTOTUNE_GAMMA}\nauto_WD×{AUTOTUNE_WD_MULT}"
+        f"\nauto_beta1={AUTOTUNE_BETA1}\nAPPLY_BETA={AUTOTUNE_APPLY_BETA}\nAPPLY_GRADCLIP={AUTOTUNE_APPLY_GRADCLIP}"
+        f"\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}"
     )
-    plt.gca().text(0.98, 0.02, const_text, transform=plt.gca().transAxes,
+    plt.gca().text(1.02, 0.02, const_text, transform=plt.gca().transAxes,
                    ha='right', va='bottom', fontsize=8,
-                   bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+                   bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7), clip_on=False)
     try:
         _script_name = Path(__file__).name
     except Exception:
@@ -538,9 +541,10 @@ try:
     const_text = (f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
                   f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
                   f"pct_start={ONECYCLE_PCT_START}\ndiv_factor={ONECYCLE_DIV_FACTOR}\nfinal_div={ONECYCLE_FINAL_DIV_FACTOR}\n"
-                  f"WD={WEIGHT_DECAY}\nDROPOUT={DEFAULT_DROPOUT:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}")
+                  f"WD={WEIGHT_DECAY}\nDROPOUT={DEFAULT_DROPOUT:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}"
+                  f"\nauto_thr={AUTOTUNE_PRAUC_THRESHOLD}\nauto_gamma={AUTOTUNE_GAMMA}\nauto_WD×{AUTOTUNE_WD_MULT}\nauto_beta1={AUTOTUNE_BETA1}\nAPPLY_BETA={AUTOTUNE_APPLY_BETA}\nAPPLY_GRADCLIP={AUTOTUNE_APPLY_GRADCLIP}\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}")
 
-    ax1.text(0.98, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    ax1.text(1.02, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7), clip_on=False)
     try:
         _script_name = Path(__file__).name
     except Exception:

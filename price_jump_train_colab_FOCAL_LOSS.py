@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-26 10:29
+# Last modified (MSK): 2025-08-26 10:51
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -343,12 +343,11 @@ try:
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
-        f"PNL_thr={PNL_FIXED_THRESHOLD}\nLOSS=Focal(gamma={FOCAL_GAMMA}, alpha_neg={ALPHA_NEG}, alpha_pos={ALPHA_POS})"
-        f"\nDROPOUT={DROPOUT_P:.3f}"
+        f"PNL_thr={PNL_FIXED_THRESHOLD}\nLOSS=Focal(gamma={FOCAL_GAMMA}, alpha_neg={ALPHA_NEG}, alpha_pos={ALPHA_POS})\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nUSE_STANDARD_SCALER=True"
     )
-    plt.gca().text(0.98, 0.02, const_text, transform=plt.gca().transAxes,
+    plt.gca().text(1.02, 0.02, const_text, transform=plt.gca().transAxes,
                    ha='right', va='bottom', fontsize=8,
-                   bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+                   bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7), clip_on=False)
     # script filename at bottom-left
     try:
         _script_name = Path(__file__).name
