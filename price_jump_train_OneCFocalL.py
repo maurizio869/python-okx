@@ -1,11 +1,12 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-27 13:21
+# Last modified (MSK): 2025-08-27 14:29
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
 # - Move threshold constants block outside axes on the right; legend stays bottom
 # - Increase threshold figure height and bottom padding to preserve plot proportions
 # - Fix threshold bug: use NumPy array for val_probs_all comparisons (masks, avg_dd, mask_best)
+# - Add avg_dd (seq, price) line + rectangles; double figure size; improve rectangle anti-overlap; constants bottom aligned with x-axis
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -593,7 +594,7 @@ for t in thresholds:
 print(f"Выбран порог по PnL (валидация): {best_thr:.4f}, comp_ret={best_comp*100 if np.isfinite(best_comp) else float('nan'):.2f}% trades={best_trades}")
 
 try:
-    fig, ax1 = plt.subplots(figsize=(9.2,6.5)); ax2 = ax1.twinx()
+    fig, ax1 = plt.subplots(figsize=(18.4,13.0)); ax2 = ax1.twinx()
     # left metrics normalized to [0,1]
     thr_arr = np.asarray(thr_list)
     pnl_arr = np.asarray(pnl_list)
@@ -604,10 +605,32 @@ try:
     mdd_arr  = np.asarray(mdd_list)
     intradd_arr = np.asarray(max_intra_dd_list)
     pnlseq_arr = np.asarray(pnl_seq_list)
+    # avg_dd (seq, price) per threshold using sequential non-overlapping trades
+    def _avg_price_dd_seq_pct_for_mask(mask: np.ndarray) -> float:
+        if not np.any(mask):
+            return 0.0
+        ent = entry_idx[mask]
+        order = np.argsort(ent)
+        ent_sorted = ent[order]
+        dd_vals = []
+        last_exit = -10**9
+        for e_i in ent_sorted:
+            if e_i >= last_exit:
+                end = int(e_i + PRED_WINDOW)
+                if end < len(ds.lows):
+                    min_low = float(np.min(ds.lows[e_i:end+1]))
+                    entry_open = float(ds.opens[int(e_i)]) if int(e_i) < len(ds.opens) else float('nan')
+                    if np.isfinite(entry_open) and entry_open > 0:
+                        dd_i = (min_low / max(entry_open, 1e-12)) - 1.0
+                        dd_vals.append(abs(dd_i))
+                last_exit = int(e_i + PRED_WINDOW)
+        return float(np.mean(dd_vals) * 100.0) if len(dd_vals) > 0 else 0.0
+    avgdd_seq_list = [ _avg_price_dd_seq_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
+    avgdd_arr = np.asarray(avgdd_seq_list)
     def _norm(a):
         a = np.asarray(a, dtype=np.float64)
         return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a) + 1e-12) if a.size>0 else a
-    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr); intradd_n = _norm(intradd_arr); pnlseq_n = _norm(pnlseq_arr)
+    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr); intradd_n = _norm(intradd_arr); pnlseq_n = _norm(pnlseq_arr); avgdd_n = _norm(avgdd_arr)
 
     # styles: mean black dashed, median gray dashed; others distinct
     l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color='#1f77b4', linewidth=1.8)
@@ -622,6 +645,7 @@ try:
     # new metrics on left axis
     l8, = ax1.plot(thr_arr, intradd_n, label='Max IntraTrade DD (price, %)', color='#98df8a', linewidth=1.6)
     l9, = ax1.plot(thr_arr, pnlseq_n, label='PnL (seq, %)', color='#d62728', linewidth=1.6)
+    l10, = ax1.plot(thr_arr, avgdd_n, label='avg_dd (%)', color='#17becf', linewidth=1.6)
 
     # constants box outside on the right; legend below
     const_text = (f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
@@ -629,10 +653,19 @@ try:
                   f"pct_start={ONECYCLE_PCT_START}\ndiv_factor={ONECYCLE_DIV_FACTOR}\nfinal_div={ONECYCLE_FINAL_DIV_FACTOR}\n"
                   f"WD={WEIGHT_DECAY}\nDROPOUT={DEFAULT_DROPOUT:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}"
                   f"\nauto_thr={AUTOTUNE_PRAUC_THRESHOLD}\nauto_gamma={AUTOTUNE_GAMMA}\nauto_WD×{AUTOTUNE_WD_MULT}\nauto_beta1={AUTOTUNE_BETA1}\nAPPLY_BETA={AUTOTUNE_APPLY_BETA}\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}\nbest_lr_default={best_lr_default:.2e}")
-    fig.text(0.985, 0.02, const_text, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    try:
+        fig.canvas.draw()
+        ax_pos = ax1.get_position()
+        right_x = ax_pos.x1 + 0.005
+        bottom_y = ax_pos.y0
+        fig.text(right_x, bottom_y, const_text, ha='left', va='bottom', fontsize=8,
+                 bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    except Exception:
+        fig.text(0.985, 0.02, const_text, ha='right', va='bottom', fontsize=8,
+                 bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
 
     handles, labels = [], []
-    for ln in (l1, l2, l3, l4, l5, l6, l7, l8, l9):
+    for ln in (l1, l2, l3, l4, l5, l6, l7, l8, l9, l10):
         handles.append(ln); labels.append(ln.get_label())
     leg2 = ax1.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, -0.18), ncol=5)
 
@@ -655,14 +688,15 @@ try:
             return float(abs(np.mean(dd)) * 100.0)
         series = [
             (comp_n, comp_arr, l1.get_color(), False),
-            (pnl_n,  pnl_arr,  l2.get_color(), True),
+            (pnl_n,  pnl_arr,  l2.get_color(), False),
             (mean_n, mean_arr, l3.get_color(), False),
             (med_n,  med_arr,  l4.get_color(), False),
             (mdd_n,  mdd_arr,  l5.get_color(), False),
             (intradd_n, intradd_arr, l8.get_color(), False),
             (pnlseq_n, pnlseq_arr, l9.get_color(), False),
+            (avgdd_n, avgdd_arr, l10.get_color(), False),
         ]
-        y_tol = 0.04
+        y_tol = 0.02
         for t in t_points:
             idx = int(np.argmin(np.abs(thr_arr - t)))
             items = []
@@ -691,7 +725,7 @@ try:
                 else:
                     for k, (yv, text, col) in enumerate(group):
                         ax1.scatter([thr_arr[idx]],[yv], color=col, s=14)
-                        align = (1.0, 0.5) if k == 0 else (0.0, 0.5)
+                        align = (1.0, 0.5) if (k % 2 == 0) else (0.0, 0.5)
                         ab = AnnotationBbox(TextArea(text, textprops=dict(color=col, fontsize=7)),
                                              (thr_arr[idx], yv), box_alignment=align,
                                              bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=col, alpha=0.7))
