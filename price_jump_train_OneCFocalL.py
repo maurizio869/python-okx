@@ -737,7 +737,7 @@ try:
             panel_width = 0.12
         const_ax = fig.add_axes([panel_left, ax_pos.y0, panel_width, ax_pos.height])
         const_ax.axis('off')
-        const_ax.text(0.0, 0.0, const_text, ha='left', va='bottom', fontsize=8,
+        const_ax.text(0.5, 0.5, const_text, ha='center', va='center', fontsize=8,
                      bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     except Exception:
         fig.text(0.985, 0.02, const_text, ha='right', va='bottom', fontsize=8,
