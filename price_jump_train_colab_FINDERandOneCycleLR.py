@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-26 15:42
+# Last modified (MSK): 2025-08-26 15:55
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -12,6 +12,7 @@ import pandas as pd
 import torch, torch.nn as nn
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
+from matplotlib.offsetbox import AnnotationBbox, TextArea
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
@@ -432,7 +433,7 @@ try:
     l4, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color='#7f7f7f', linestyle='--', linewidth=1.6)
     l5, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color='#2ca02c', linestyle='-', linewidth=1.6)
     l6, = ax2.plot(thr_arr, np.asarray(sharpe_list), label='Sharpe', color='#9467bd', alpha=0.9)
-    # constants box bottom-right; legend strictly above it
+    # constants box bottom-right; legend BELOW axes
     const_text = (
         f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
         f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
@@ -440,47 +441,33 @@ try:
         f"WD={WEIGHT_DECAY}\nDROPOUT={DROPOUT_P:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nUSE_STANDARD_SCALER=False"
     )
     ax1.text(0.94, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
-    leg2 = ax1.legend(loc='lower right', bbox_to_anchor=(0.94, 0.26))
-    try:
-        fig = plt.gcf(); fig.canvas.draw()
-        renderer = fig.canvas.get_renderer()
-        const_bb = ax1.texts[-1].get_window_extent(renderer=renderer)
-        const_left_axes = ax1.transAxes.inverted().transform((const_bb.x0, const_bb.y0))[0]
-        margin = 0.01
-        new_x = max(0.02, const_left_axes - margin)
-        leg2.set_bbox_to_anchor((new_x, 0.02), transform=ax1.transAxes)
-    except Exception:
-        pass
-    # fixed-point annotations at thr_min, thirds, thr_max
+    handles, labels = [], []
+    for ln in (l1, l2, l3, l4, l5, l6):
+        handles.append(ln); labels.append(ln.get_label())
+    leg2 = ax1.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, -0.14), ncol=5)
+    ax1.grid(True, alpha=0.3)
+    # fixed-point annotations at thr_min, thirds, thr_max: real values, hard-anchored
     try:
         thr_min_v = float(thr_min); thr_max_v = float(thr_max)
         delta = thr_max_v - thr_min_v
         t_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
-        def _annot_series(ax, xvals, yvals, color, idx_offset):
+        def _annot_series(ax, xvals, yvals_norm, yvals_real, color):
             for t in t_points:
                 idx = int(np.argmin(np.abs(xvals - t)))
-                ax.scatter([xvals[idx]],[yvals[idx]], color=color, s=14)
-                ax.annotate(f"{yvals[idx]:.2f}", xy=(xvals[idx], yvals[idx]), xytext=(0, idx_offset*12), textcoords='offset points', ha='center', va='center', fontsize=7,
-                            color=color, bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7))
-        _annot_series(ax1, thr_arr, comp_n, l1.get_color(), 0)
-        _annot_series(ax1, thr_arr, pnl_n,  l2.get_color(), 1)
-        _annot_series(ax1, thr_arr, mean_n, l3.get_color(), 2)
-        _annot_series(ax1, thr_arr, med_n,  l4.get_color(), 3)
-        _annot_series(ax1, thr_arr, mdd_n,  l5.get_color(), 4)
+                ax.scatter([xvals[idx]],[yvals_norm[idx]], color=color, s=14)
+                ab = AnnotationBbox(TextArea(f"{yvals_real[idx]:.2f}", textprops=dict(color=color, fontsize=7)),
+                                     (xvals[idx], yvals_norm[idx]),
+                                     box_alignment=(0.5, 1.0),
+                                     bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=color, alpha=0.7))
+                ax.add_artist(ab)
+        _annot_series(ax1, thr_arr, comp_n, comp_arr, l1.get_color())
+        _annot_series(ax1, thr_arr, pnl_n,  pnl_arr,  l2.get_color())
+        _annot_series(ax1, thr_arr, mean_n, mean_arr, l3.get_color())
+        _annot_series(ax1, thr_arr, med_n,  med_arr,  l4.get_color())
+        _annot_series(ax1, thr_arr, mdd_n,  mdd_arr,  l5.get_color())
     except Exception:
         pass
-    # save
-    try:
-        import pytz
-        msk = pytz.timezone('Europe/Moscow')
-        ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
-        out_name = f'threshold_sweep_{ts}.png'
-        fig.savefig(out_name, dpi=130)
-        print(f"Saved threshold sweep plot to {Path(out_name).resolve()}")
-    except Exception as ex:
-        print(f"! Не удалось сохранить график: {ex}")
-    finally:
-        plt.show(); plt.close(fig)
+    plt.tight_layout(rect=[0, 0.15, 1, 1])
 except Exception as ex:
     print(f"! Не удалось построить график перебора порога: {ex}")
 # finalize meta

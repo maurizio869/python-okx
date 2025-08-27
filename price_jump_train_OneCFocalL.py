@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-26 15:42
+# Last modified (MSK): 2025-08-26 15:55
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -10,6 +10,7 @@ import pandas as pd
 import torch, torch.nn as nn
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
+from matplotlib.offsetbox import AnnotationBbox, TextArea
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
@@ -571,8 +572,8 @@ try:
     l6, = ax2.plot(thr_arr, shp_arr, label='Sharpe', color='#9467bd', alpha=0.9)
     # add Trades on separate invisible y-axis
     ax3 = ax1.twinx(); ax3.get_yaxis().set_visible(False)
-    ax3.plot(thr_arr, np.asarray(trades_list), label='Trades', color='#8c564b')
-    # detailed max CompRet annotation (as раньше)
+    l7, = ax3.plot(thr_arr, np.asarray(trades_list), label='Trades', color='#8c564b')
+    # detailed max CompRet annotation (старый формат)
     if np.isfinite(best_comp):
         idx = int(np.nanargmax(comp_arr))
         ax1.axvline(thr_arr[idx], color=l1.get_color(), linestyle='--', alpha=0.6)
@@ -589,46 +590,35 @@ try:
                   f"WD={WEIGHT_DECAY}\nDROPOUT={DEFAULT_DROPOUT:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}"
                   f"\nauto_thr={AUTOTUNE_PRAUC_THRESHOLD}\nauto_gamma={AUTOTUNE_GAMMA}\nauto_WD×{AUTOTUNE_WD_MULT}\nauto_beta1={AUTOTUNE_BETA1}\nAPPLY_BETA={AUTOTUNE_APPLY_BETA}\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}")
     ax1.text(0.94, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
-    # legend strictly above constants box (can protrude upward)
-    leg2 = ax1.legend(loc='lower right', bbox_to_anchor=(0.94, 0.26))
-    # post-draw: place legend just above constants box
-    try:
-        fig.canvas.draw()
-        renderer = fig.canvas.get_renderer()
-        const_bb = ax1.texts[-1].get_window_extent(renderer=renderer)
-        const_top_axes = ax1.transAxes.inverted().transform((const_bb.x0, const_bb.y1))[1]
-        margin_y = 0.02
-        leg2.set_bbox_to_anchor((0.94, const_top_axes + margin_y), transform=ax1.transAxes)
-    except Exception:
-        pass
+    # legend BELOW axes (outside), include Sharpe and Trades
+    handles, labels = [], []
+    for ln in (l1, l2, l3, l4, l5, l6, l7):
+        handles.append(ln); labels.append(ln.get_label())
+    leg2 = ax1.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, -0.14), ncol=4)
     ax1.grid(True, alpha=0.3)
-    try:
-        _script_name = Path(__file__).name
-    except Exception:
-        _script_name = "price_jump_train_OneCFocalL.py"
-    ax1.text(0.02, 0.02, _script_name, transform=ax1.transAxes,
-             ha='left', va='bottom', fontsize=8,
-             bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
-    fig.tight_layout(); from datetime import datetime; import pytz
-    msk = pytz.timezone('Europe/Moscow'); ts = datetime.now(msk).strftime('%Y%m%d_%H%M')
-    # fixed-point annotations at thr_min, thirds, thr_max
+    # fixed-point annotations at thr_min, thirds, thr_max: real values, hard-anchored
     try:
         thr_min_v = float(thr_min); thr_max_v = float(thr_max)
         delta = thr_max_v - thr_min_v
         t_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
-        def _annot_series(ax, xvals, yvals, color, idx_offset):
+        def _annot_series(ax, xvals, yvals_norm, yvals_real, color):
             for t in t_points:
                 idx = int(np.argmin(np.abs(xvals - t)))
-                ax.scatter([xvals[idx]],[yvals[idx]], color=color, s=14)
-                ax.annotate(f"{yvals[idx]:.2f}", xy=(xvals[idx], yvals[idx]), xytext=(0, idx_offset*12), textcoords='offset points', ha='center', va='center', fontsize=7,
-                            color=color, bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.7))
-        _annot_series(ax1, thr_arr, comp_n, l1.get_color(), 0)
-        _annot_series(ax1, thr_arr, pnl_n,  l2.get_color(), 1)
-        _annot_series(ax1, thr_arr, mean_n, l3.get_color(), 2)
-        _annot_series(ax1, thr_arr, med_n,  l4.get_color(), 3)
-        _annot_series(ax1, thr_arr, mdd_n,  l5.get_color(), 4)
+                ax.scatter([xvals[idx]],[yvals_norm[idx]], color=color, s=14)
+                ab = AnnotationBbox(TextArea(f"{yvals_real[idx]:.2f}", textprops=dict(color=color, fontsize=7)),
+                                     (xvals[idx], yvals_norm[idx]),
+                                     box_alignment=(0.5, 1.0),
+                                     bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=color, alpha=0.7))
+                ax.add_artist(ab)
+        _annot_series(ax1, thr_arr, comp_n, comp_arr, l1.get_color())
+        _annot_series(ax1, thr_arr, pnl_n,  pnl_arr,  l2.get_color())
+        _annot_series(ax1, thr_arr, mean_n, mean_arr, l3.get_color())
+        _annot_series(ax1, thr_arr, med_n,  med_arr,  l4.get_color())
+        _annot_series(ax1, thr_arr, mdd_n,  mdd_arr,  l5.get_color())
     except Exception:
         pass
+    # expand bottom margin for legend
+    plt.tight_layout(rect=[0, 0.15, 1, 1])
     out_name = f'threshold_sweep_{ts}.png'; fig.savefig(out_name, dpi=130)
     print(f"Saved threshold sweep plot to {Path(out_name).resolve()}"); plt.show()
 except Exception as ex:
