@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-27 20:46
+# Last modified (MSK): 2025-08-27 21:31
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
@@ -740,10 +740,10 @@ try:
         panel_bottom = ax_pos.y1 - panel_height
         const_ax = fig.add_axes([panel_left, panel_bottom, panel_width, panel_height])
         const_ax.axis('off')
-        const_ax.text(0.5, 1.0, const_text, ha='center', va='top', fontsize=8,
+        const_ax.text(0.5, 1.0, const_text, ha='center', va='top', fontsize=12,
                       bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     except Exception:
-        fig.text(0.985, 0.02, const_text, ha='right', va='bottom', fontsize=8,
+        fig.text(0.985, 0.02, const_text, ha='right', va='bottom', fontsize=12,
                  bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
 
     handles, labels = [], []
@@ -892,7 +892,7 @@ try:
         )
         ax1.annotate(text, xy=(best_thr_local, comp_n[i_best]), xycoords='data',
                      xytext=(0.5, 1.04), textcoords='axes fraction',
-                     ha='center', va='bottom', fontsize=8,
+                     ha='center', va='bottom', fontsize=12,
                      bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.85))
     # keep tight_layout inside try
     plt.tight_layout(rect=[0.0, 0.22, 0.78, 1])
