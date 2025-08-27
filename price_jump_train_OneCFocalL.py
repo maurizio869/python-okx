@@ -1,12 +1,12 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-27 15:23
+# Last modified (MSK): 2025-08-27 15:25
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
 # - Move threshold constants block outside axes on the right; legend stays bottom
 # - Increase threshold figure height and bottom padding to preserve plot proportions
 # - Fix threshold bug: use NumPy array for val_probs_all comparisons (masks, avg_dd, mask_best)
-# - Params: BEST_LR_MULTIPLIER=1.5; WEIGHT_DECAY=4.5e-5; EPOCHS=400
+# - Params: BEST_LR_MULTIPLIER=2.0; ONECYCLE_FINAL_DIV_FACTOR=7.5; WEIGHT_DECAY=4.5e-5; EPOCHS=400
 # - Add avg_dd (seq, price) line + rectangles; add pnl_ddd metric; double figure size; improve rectangle anti-overlap; constants bottom aligned with x-axis; refine pnl_ddd exit (close-open current < close-open prev, prev green, +0.25%)
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
@@ -48,12 +48,12 @@ best_lr_default = 6.17e-03
 LR_FINDER_MIN_FACTOR = 1.0/20.0
 LR_FINDER_MAX_FACTOR = 8.0
 # OneCycle shape
-BEST_LR_MULTIPLIER = 1.5
+BEST_LR_MULTIPLIER = 2.0
 CLIP_MIN_FACTOR = 0.8
 CLIP_MAX_FACTOR = 8.0
 ONECYCLE_PCT_START = 0.12
 ONECYCLE_DIV_FACTOR = 2.0
-ONECYCLE_FINAL_DIV_FACTOR = 5.5
+ONECYCLE_FINAL_DIV_FACTOR = 7.5
 WEIGHT_DECAY = 4.5e-5
 DEFAULT_DROPOUT = 0.35
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -791,7 +791,7 @@ try:
                     ax1.scatter([thr_arr[idx]],[yv], color=col, s=14)
                     ab = AnnotationBbox(TextArea(text, textprops=dict(color=col, fontsize=7)),
                                          (thr_arr[idx], yv), box_alignment=(0.5, 1.0),
-                                         bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=col, alpha=0.45))
+                                         bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=col, alpha=0.32))
                     ax1.add_artist(ab)
                 else:
                     for k, (yv, text, col, idx) in enumerate(group):
@@ -799,7 +799,7 @@ try:
                         align = (1.0, 0.5) if (k % 2 == 0) else (0.0, 0.5)
                         ab = AnnotationBbox(TextArea(text, textprops=dict(color=col, fontsize=7)),
                                              (thr_arr[idx], yv), box_alignment=align,
-                                             bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=col, alpha=0.45))
+                                             bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=col, alpha=0.32))
                         ax1.add_artist(ab)
 
         # annotate Sharpe and Trades at 1/6 and 1/2 of threshold range
