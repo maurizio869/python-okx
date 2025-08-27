@@ -1,12 +1,12 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-27 14:55
+# Last modified (MSK): 2025-08-27 15:02
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
 # - Move threshold constants block outside axes on the right; legend stays bottom
 # - Increase threshold figure height and bottom padding to preserve plot proportions
 # - Fix threshold bug: use NumPy array for val_probs_all comparisons (masks, avg_dd, mask_best)
-# - Add avg_dd (seq, price) line + rectangles; add pnl_ddd metric; double figure size; improve rectangle anti-overlap; constants bottom aligned with x-axis; refine pnl_ddd exit condition (current body < previous, prev green, +0.25%)
+# - Add avg_dd (seq, price) line + rectangles; add pnl_ddd metric; double figure size; improve rectangle anti-overlap; constants bottom aligned with x-axis; refine pnl_ddd exit (close-open current < close-open prev, prev green, +0.25%)
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -663,8 +663,8 @@ try:
                 close_prev = float(ds.closes[j-1]) if j-1 >= 0 else close_j
                 open_prev = float(ds.opens[j-1]) if j-1 >= 0 else open_j
                 prev_green = (close_prev > open_prev)
-                body_current = abs(close_j - open_j)
-                body_prev = abs(close_prev - open_prev)
+                body_current = (close_j - open_j)
+                body_prev = (close_prev - open_prev)
                 body_smaller = (body_current < body_prev)
                 price_up_enough = ((close_j / entry_open - 1.0) >= PNL_DDD_THRESH_PCT)
                 if body_smaller and prev_green and price_up_enough:
