@@ -1,12 +1,12 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-27 14:29
+# Last modified (MSK): 2025-08-27 14:48
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
 # - Move threshold constants block outside axes on the right; legend stays bottom
 # - Increase threshold figure height and bottom padding to preserve plot proportions
 # - Fix threshold bug: use NumPy array for val_probs_all comparisons (masks, avg_dd, mask_best)
-# - Add avg_dd (seq, price) line + rectangles; double figure size; improve rectangle anti-overlap; constants bottom aligned with x-axis
+# - Add avg_dd (seq, price) line + rectangles; add pnl_ddd metric; double figure size; improve rectangle anti-overlap; constants bottom aligned with x-axis
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -63,6 +63,11 @@ GRADCLIP_MAXNORM_1_APPLY = True
 GRADCLIP_MAXNORM = 0.8
 USE_STANDARD_SCALER = False
 USE_EARLY_STOP = False
+
+# PnL_DDD parameters (sequential, dynamic exit)
+PNL_DDD_THRESH_PCT = 0.0025   # +0.25% above entry open
+PNL_DDD_STOP_LOSS_PCT = -0.002  # -0.20% stop vs entry open
+PNL_DDD_MAX_HOLD_MIN = 10      # fallback hold minutes if no early exit
 
 # Focal Loss params
 FOCAL_GAMMA = 1.5
@@ -626,11 +631,58 @@ try:
                 last_exit = int(e_i + PRED_WINDOW)
         return float(np.mean(dd_vals) * 100.0) if len(dd_vals) > 0 else 0.0
     avgdd_seq_list = [ _avg_price_dd_seq_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
+    # pnl_ddd (seq) per threshold with dynamic exit rules
+    def _pnl_ddd_pct_for_mask(mask: np.ndarray) -> float:
+        if not np.any(mask):
+            return 0.0
+        ent = entry_idx[mask]
+        order = np.argsort(ent)
+        ent_sorted = ent[order]
+        equity = 1.0
+        last_exit = -10**9
+        for e_i in ent_sorted:
+            if e_i < last_exit:
+                continue
+            entry_open = float(ds.opens[int(e_i)]) if int(e_i) < len(ds.opens) else float('nan')
+            if not np.isfinite(entry_open) or entry_open <= 0:
+                continue
+            exit_idx = None
+            # scan up to max( PNL_DDD_MAX_HOLD_MIN, PRED_WINDOW )
+            max_h = int(max(PNL_DDD_MAX_HOLD_MIN, PRED_WINDOW))
+            for k in range(1, max_h+1):
+                j = int(e_i + k)
+                if j >= len(ds.opens):
+                    break
+                # stop-loss check (intra-minute via lows)
+                low_j = float(ds.lows[j])
+                if (low_j / entry_open - 1.0) <= PNL_DDD_STOP_LOSS_PCT:
+                    exit_idx = j
+                    break
+                # dynamic exit condition
+                close_j = float(ds.closes[j]); open_j = float(ds.opens[j])
+                close_prev = float(ds.closes[j-1]) if j-1 >= 0 else close_j
+                open_prev = float(ds.opens[j-1]) if j-1 >= 0 else open_j
+                prev_green = (close_prev > open_prev)
+                body_down = (close_j < open_j)
+                price_up_enough = ((close_j / entry_open - 1.0) >= PNL_DDD_THRESH_PCT)
+                if body_down and prev_green and price_up_enough:
+                    exit_idx = j
+                    break
+            if exit_idx is None:
+                exit_idx = int(e_i + max(PNL_DDD_MAX_HOLD_MIN, PRED_WINDOW))
+                if exit_idx >= len(ds.closes):
+                    exit_idx = len(ds.closes) - 1
+            r_i = float(ds.closes[exit_idx] / entry_open - 1.0)
+            equity *= (1.0 + r_i)
+            last_exit = exit_idx
+        return float((equity - 1.0) * 100.0)
+    pnl_ddd_list = [ _pnl_ddd_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
+    pnl_ddd_arr = np.asarray(pnl_ddd_list)
     avgdd_arr = np.asarray(avgdd_seq_list)
     def _norm(a):
         a = np.asarray(a, dtype=np.float64)
         return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a) + 1e-12) if a.size>0 else a
-    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr); intradd_n = _norm(intradd_arr); pnlseq_n = _norm(pnlseq_arr); avgdd_n = _norm(avgdd_arr)
+    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr); intradd_n = _norm(intradd_arr); pnlseq_n = _norm(pnlseq_arr); avgdd_n = _norm(avgdd_arr); pnlddd_n = _norm(pnl_ddd_arr)
 
     # styles: mean black dashed, median gray dashed; others distinct
     l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color='#1f77b4', linewidth=1.8)
@@ -646,6 +698,8 @@ try:
     l8, = ax1.plot(thr_arr, intradd_n, label='Max IntraTrade DD (price, %)', color='#98df8a', linewidth=1.6)
     l9, = ax1.plot(thr_arr, pnlseq_n, label='PnL (seq, %)', color='#d62728', linewidth=1.6)
     l10, = ax1.plot(thr_arr, avgdd_n, label='avg_dd (%)', color='#17becf', linewidth=1.6)
+    l11, = ax1.plot(thr_arr, pnlddd_n, label='PnL (ddd, %)', color='#bcbd22', linewidth=1.6)
+    # placeholder for pnl_ddd; will compute below
 
     # constants box outside on the right; legend below
     const_text = (f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
@@ -665,7 +719,7 @@ try:
                  bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
 
     handles, labels = [], []
-    for ln in (l1, l2, l3, l4, l5, l6, l7, l8, l9, l10):
+    for ln in (l1, l2, l3, l4, l5, l6, l7, l8, l9, l10, l11):
         handles.append(ln); labels.append(ln.get_label())
     leg2 = ax1.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, -0.18), ncol=5)
 
@@ -695,6 +749,7 @@ try:
             (intradd_n, intradd_arr, l8.get_color(), False),
             (pnlseq_n, pnlseq_arr, l9.get_color(), False),
             (avgdd_n, avgdd_arr, l10.get_color(), False),
+            (pnlddd_n, pnl_ddd_arr, l11.get_color(), False),
         ]
         y_tol = 0.02
         for t in t_points:
@@ -766,7 +821,7 @@ try:
         n_best = int(mask_best.sum())
         r_best = ret_val[mask_best] if n_best>0 else np.array([], dtype=np.float64)
         sharpe_best = float(np.mean(r_best) / (np.std(r_best) + 1e-12)) if r_best.size>=2 else 0.0
-        sum_best = float(np.sum(r_best) * 100.0)
+        sum_best = float(np.sum(r_best)) * 100.0
         mean_best = float(np.mean(r_best) * 100.0) if r_best.size>0 else 0.0
         med_best  = float(np.median(r_best) * 100.0) if r_best.size>0 else 0.0
         ent_best = entry_idx[mask_best]
@@ -777,11 +832,13 @@ try:
             run_max_b = np.maximum.accumulate(equity_best)
             dd_series = equity_best / (run_max_b + 1e-12) - 1.0
             max_dd_best = float(abs(np.min(dd_series)) * 100.0)
-            avg_dd_best = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
+            _avg_dd_equity_unused = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
         else:
-            max_dd_best = 0.0; avg_dd_best = 0.0
+            max_dd_best = 0.0; _avg_dd_equity_unused = 0.0
         max_intra_best = _max_intratrade_dd_pct_for_mask(mask_best)
         pnl_seq_best = _pnl_seq_pct_for_mask(mask_best)
+        avg_dd_seq_best = _avg_price_dd_seq_pct_for_mask(mask_best)
+        pnl_ddd_best = _pnl_ddd_pct_for_mask(mask_best)
         text = (
             f"comp_ret: {float(comp_arr[i_best]):.2f}%\n"
             f"thr: {best_thr_local:.3f}\n"
@@ -791,9 +848,10 @@ try:
             f"mean: {mean_best:.2f}%\n"
             f"median: {med_best:.2f}%\n"
             f"max_dd: {max_dd_best:.2f}%\n"
-            f"avg_dd: {avg_dd_best:.2f}%\n"
+            f"avg_dd: {avg_dd_seq_best:.2f}%\n"
             f"max_intratrade_dd: {max_intra_best:.2f}%\n"
-            f"pnl_seq: {pnl_seq_best:.2f}%"
+            f"pnl_seq: {pnl_seq_best:.2f}%\n"
+            f"pnl_ddd: {pnl_ddd_best:.2f}%"
         )
         ax1.annotate(text, xy=(best_thr_local, comp_n[i_best]), xycoords='data',
                      xytext=(0.5, 1.04), textcoords='axes fraction',
