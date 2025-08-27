@@ -1,5 +1,10 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-27 10:09
+# Last modified (MSK): 2025-08-27 11:12
+# Changes:
+# - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
+# - Extend max CompRet annotation with new metrics (real values)
+# - Legend placed below with increased figure height; restore plot proportions
+# - Implement lateral anti-overlap for value rectangles at same x; base anchoring kept
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
  Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -409,6 +414,8 @@ entry_idx = val_indices + SEQ_LEN
 entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
 ret_per_trade_val = exit_closes / np.maximum(entry_opens, MIN_DENOM_EPS) - 1.0
+# lows for intra-trade drawdown computations
+lows_all = df["l"].astype(np.float32).values
 
 print(f"Перебор порога по PnL (валидация): min={THR_SWEEP_MIN:.3f}, max={THR_SWEEP_MAX:.3f}, step={THR_SWEEP_STEP:.4f}")
 thresholds = np.arange(THR_SWEEP_MIN, THR_SWEEP_MAX + 1e-12, THR_SWEEP_STEP)
@@ -421,6 +428,45 @@ thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]
 mean_ret_list=[]; median_ret_list=[]; mdd_list=[]
 trades_list = [] # Added for plotting
 
+def _max_intratrade_dd_pct_for_mask(mask: np.ndarray) -> float:
+    if not np.any(mask):
+        return 0.0
+    ent = entry_idx[mask]
+    dd_min = 0.0
+    has_any = False
+    for k in ent:
+        end = int(k + PRED_WINDOW)
+        if end >= len(lows_all):
+            continue
+        min_low = float(np.min(lows_all[k:end+1]))
+        entry_open = float(ds.opens[int(k)]) if int(k) < len(ds.opens) else float('nan')
+        if not np.isfinite(entry_open) or entry_open <= 0:
+            continue
+        dd_i = (min_low / max(entry_open, MIN_DENOM_EPS)) - 1.0
+        if not has_any:
+            dd_min = dd_i; has_any = True
+        else:
+            dd_min = min(dd_min, dd_i)
+    return float(abs(dd_min) * 100.0) if has_any else 0.0
+
+def _pnl_seq_pct_for_mask(mask: np.ndarray) -> float:
+    if not np.any(mask):
+        return 0.0
+    ent = entry_idx[mask]
+    order = np.argsort(ent)
+    ent_sorted = ent[order]
+    r_sorted = ret_per_trade_val[mask][order]
+    equity = 1.0
+    last_exit = -10**9
+    for e_i, r_i in zip(ent_sorted, r_sorted):
+        if e_i >= last_exit:
+            equity *= (1.0 + float(r_i))
+            last_exit = int(e_i + PRED_WINDOW)
+    return float((equity - 1.0) * 100.0)
+
+max_intra_dd_list = []
+pnl_seq_list = []
+
 for t in thresholds:
     mask = (val_probs_all >= t)
     n_trades = int(mask.sum())
@@ -431,6 +477,8 @@ for t in thresholds:
         mean_ret = 0.0
         median_ret = 0.0
         mdd_pct = 0.0
+        max_intra_dd_pct = 0.0
+        pnl_seq_pct = 0.0
         trades_list.append(0) # Append 0 for plotting
     else:
         r = ret_per_trade_val[mask]
@@ -451,8 +499,11 @@ for t in thresholds:
         run_max = np.maximum.accumulate(equity)
         dd = np.min(equity / (run_max + COMP_EPS) - 1.0) if equity.size > 0 else 0.0
         mdd_pct = float(abs(dd) * 100.0)
+        # new metrics
+        max_intra_dd_pct = _max_intratrade_dd_pct_for_mask(mask)
+        pnl_seq_pct = _pnl_seq_pct_for_mask(mask)
         trades_list.append(n_trades) # Append n_trades for plotting
-    thr_list.append(float(t)); pnl_list.append(sum_ret*100.0); comp_list.append(comp_ret*100.0 if np.isfinite(comp_ret) else np.nan); sharpe_list.append(sharpe); mean_ret_list.append(mean_ret); median_ret_list.append(median_ret); mdd_list.append(mdd_pct)
+    thr_list.append(float(t)); pnl_list.append(sum_ret*100.0); comp_list.append(comp_ret*100.0 if np.isfinite(comp_ret) else np.nan); sharpe_list.append(sharpe); mean_ret_list.append(mean_ret); median_ret_list.append(median_ret); mdd_list.append(mdd_pct); max_intra_dd_list.append(max_intra_dd_pct); pnl_seq_list.append(pnl_seq_pct)
     if comp_ret > best_comp_ret:
         best_comp_ret = comp_ret
         best_threshold_pnl = float(t)
@@ -461,7 +512,7 @@ for t in thresholds:
 print(f"Выбран порог по PnL (валидация): {best_threshold_pnl:.4f}, comp_ret={best_comp_ret*100 if np.isfinite(best_comp_ret) else float('nan'):.2f}% trades={best_trades}")
 
 try:
-    fig, ax1 = plt.subplots(figsize=(8,5))
+    fig, ax1 = plt.subplots(figsize=(8,6.5))
     ax2 = ax1.twinx()
     thr_arr = np.asarray(thr_list)
     pnl_arr = np.asarray(pnl_list)
@@ -470,11 +521,13 @@ try:
     mean_arr = np.asarray(mean_ret_list)
     med_arr = np.asarray(median_ret_list)
     mdd_arr = np.asarray(mdd_list)
+    intradd_arr = np.asarray(max_intra_dd_list)
+    pnlseq_arr = np.asarray(pnl_seq_list)
     # normalize left-axis metrics
     def _norm(a):
         a = np.asarray(a, dtype=np.float64)
         return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a) + PLOT_NORM_EPS) if a.size>0 else a
-    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr)
+    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr); intradd_n = _norm(intradd_arr); pnlseq_n = _norm(pnlseq_arr)
     # styles
     l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color='#1f77b4', linewidth=1.8)
     l2, = ax1.plot(thr_arr, pnl_n,  label='pnl_sum (norm)',  color='#ff7f0e', linewidth=1.8)
@@ -482,6 +535,9 @@ try:
     l4, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color='#7f7f7f', linestyle='--', linewidth=1.6)
     l5, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color='#2ca02c', linestyle='-', linewidth=1.6)
     l6, = ax2.plot(thr_arr, shp_arr, label='Sharpe', color='#9467bd', alpha=0.9)
+    # new metrics on left axis
+    l8, = ax1.plot(thr_arr, intradd_n, label='Max IntraTrade DD (price, %)', color='#98df8a', linewidth=1.6)
+    l9, = ax1.plot(thr_arr, pnlseq_n, label='PnL (seq, %)', color='#d62728', linewidth=1.6)
     # add Trades on separate invisible y-axis
     ax3 = ax1.twinx(); ax3.get_yaxis().set_visible(False)
     l7, = ax3.plot(thr_arr, np.asarray(trades_list), label='Trades', color='#8c564b')
@@ -493,32 +549,110 @@ try:
     )
     ax1.text(0.94, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     handles, labels = [], []
-    for ln in (l1, l2, l3, l4, l5, l6, l7):
+    for ln in (l1, l2, l3, l4, l5, l6, l7, l8, l9):
         handles.append(ln); labels.append(ln.get_label())
-    leg2 = ax1.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, -0.14), ncol=5)
+    leg2 = ax1.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, -0.18), ncol=5)
     ax1.grid(True, alpha=0.3)
-    # fixed-point annotations at thr_min, thirds, thr_max: real values, hard-anchored
+    # fixed-point annotations at thr_min, thirds, thr_max: real values, hard-anchored with lateral anti-overlap when colliding at same x
     try:
         thr_min_v = float(THR_SWEEP_MIN); thr_max_v = float(THR_SWEEP_MAX)
         delta = thr_max_v - thr_min_v
         t_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
-        def _annot_series(ax, xvals, yvals_norm, yvals_real, color):
-            for t in t_points:
-                idx = int(np.argmin(np.abs(xvals - t)))
-                ax.scatter([xvals[idx]],[yvals_norm[idx]], color=color, s=14)
-                ab = AnnotationBbox(TextArea(f"{yvals_real[idx]:.2f}", textprops=dict(color=color, fontsize=7)),
-                                     (xvals[idx], yvals_norm[idx]),
-                                     box_alignment=(0.5, 1.0),
-                                     bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=color, alpha=0.7))
-                ax.add_artist(ab)
-        _annot_series(ax1, thr_arr, comp_n, comp_arr, l1.get_color())
-        _annot_series(ax1, thr_arr, pnl_n,  pnl_arr,  l2.get_color())
-        _annot_series(ax1, thr_arr, mean_n, mean_arr, l3.get_color())
-        _annot_series(ax1, thr_arr, med_n,  med_arr,  l4.get_color())
-        _annot_series(ax1, thr_arr, mdd_n,  mdd_arr,  l5.get_color())
+        series = [
+            (comp_n, comp_arr, l1.get_color()),
+            (pnl_n,  pnl_arr,  l2.get_color()),
+            (mean_n, mean_arr, l3.get_color()),
+            (med_n,  med_arr,  l4.get_color()),
+            (mdd_n,  mdd_arr,  l5.get_color()),
+            (intradd_n, intradd_arr, l8.get_color()),
+            (pnlseq_n, pnlseq_arr, l9.get_color()),
+        ]
+        y_tol = 0.04
+        for t in t_points:
+            idx = int(np.argmin(np.abs(thr_arr - t)))
+            items = []
+            for (yn, yr, col) in series:
+                items.append((float(yn[idx]), float(yr[idx]), col))
+            # group by approximate y to detect collisions
+            buckets = {}
+            for j, (yv, rv, col) in enumerate(items):
+                b = int(round(yv / max(y_tol, 1e-6)))
+                buckets.setdefault(b, []).append((j, yv, rv, col))
+            # place annotations
+            for b, group in buckets.items():
+                if len(group) == 1:
+                    _, yv, rv, col = group[0]
+                    ax1.scatter([thr_arr[idx]],[yv], color=col, s=14)
+                    ab = AnnotationBbox(TextArea(f"{rv:.2f}", textprops=dict(color=col, fontsize=7)),
+                                         (thr_arr[idx], yv),
+                                         box_alignment=(0.5, 1.0),
+                                         bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=col, alpha=0.7))
+                    ax1.add_artist(ab)
+                else:
+                    # two or more -> take first as left, second as right; others keep center
+                    for k, (_j, yv, rv, col) in enumerate(group):
+                        ax1.scatter([thr_arr[idx]],[yv], color=col, s=14)
+                        if k == 0:
+                            align = (1.0, 0.5)
+                        elif k == 1:
+                            align = (0.0, 0.5)
+                        else:
+                            align = (0.5, 1.0)
+                        ab = AnnotationBbox(TextArea(f"{rv:.2f}", textprops=dict(color=col, fontsize=7)),
+                                             (thr_arr[idx], yv),
+                                             box_alignment=align,
+                                             bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=col, alpha=0.7))
+                        ax1.add_artist(ab)
+                
+
+        # detailed annotation at max comp_ret with new metrics
+        if np.any(np.isfinite(comp_arr)):
+            i_best = int(np.nanargmax(comp_arr))
+            best_thr = float(thr_arr[i_best])
+            ax1.axvline(best_thr, color=l1.get_color(), linestyle='--', linewidth=1.0, alpha=0.7)
+            ax1.scatter([best_thr],[comp_n[i_best]], color=l1.get_color(), s=18)
+            # compute real metrics at best
+            mask_best = (val_probs_all >= best_thr)
+            n_best = int(mask_best.sum())
+            r_best = ret_per_trade_val[mask_best] if n_best>0 else np.array([], dtype=np.float64)
+            sharpe_best = float(np.mean(r_best) / (np.std(r_best) + PLOT_NORM_EPS)) if r_best.size>=SHARPE_MIN_SAMPLES else 0.0
+            sum_best = float(np.sum(r_best)) * 100.0
+            mean_best = float(np.mean(r_best) * 100.0) if r_best.size>0 else 0.0
+            med_best  = float(np.median(r_best) * 100.0) if r_best.size>0 else 0.0
+            # equity dd and avg_dd
+            ent_best = entry_idx[mask_best]
+            ord_best = np.argsort(ent_best)
+            r_sorted_best = r_best[ord_best] if r_best.size>0 else np.array([], dtype=np.float64)
+            if r_sorted_best.size>0:
+                equity_best = np.cumprod(1.0 + r_sorted_best.astype(np.float64))
+                run_max_b = np.maximum.accumulate(equity_best)
+                dd_series = equity_best / (run_max_b + COMP_EPS) - 1.0
+                max_dd_best = float(abs(np.min(dd_series)) * 100.0)
+                avg_dd_best = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
+            else:
+                max_dd_best = 0.0; avg_dd_best = 0.0
+            max_intra_best = _max_intratrade_dd_pct_for_mask(mask_best)
+            pnl_seq_best = _pnl_seq_pct_for_mask(mask_best)
+            text = (
+                f"comp_ret: {float(comp_arr[i_best]):.2f}%\n"
+                f"thr: {best_thr:.3f}\n"
+                f"trades: {n_best}\n"
+                f"pnl_sum: {sum_best:.2f}%\n"
+                f"sharpe: {sharpe_best:.2f}\n"
+                f"mean: {mean_best:.2f}%\n"
+                f"median: {med_best:.2f}%\n"
+                f"max_dd: {max_dd_best:.2f}%\n"
+                f"avg_dd: {avg_dd_best:.2f}%\n"
+                f"max_intratrade_dd: {max_intra_best:.2f}%\n"
+                f"pnl_seq: {pnl_seq_best:.2f}%"
+            )
+            ax1.annotate(text, xy=(best_thr, comp_n[i_best]), xycoords='data',
+                         xytext=(0.5, 1.04), textcoords='axes fraction',
+                         ha='center', va='bottom', fontsize=8,
+                         bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.85))
     except Exception:
         pass
-    plt.tight_layout(rect=[0, 0.15, 1, 1])
+    plt.tight_layout(rect=[0, 0.22, 1, 1])
     from datetime import datetime
     import pytz
     msk = pytz.timezone('Europe/Moscow')

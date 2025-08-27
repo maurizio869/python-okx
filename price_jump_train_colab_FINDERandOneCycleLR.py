@@ -1,5 +1,5 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-27 10:09
+# Last modified (MSK): 2025-08-27 11:12
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -413,7 +413,7 @@ for t in thresholds:
 print(f"Выбран порог по PnL (валидация): {best_thr:.4f}, comp_ret={best_comp*100 if np.isfinite(best_comp) else float('nan'):.2f}% trades={best_trades}")
 # plot metrics vs threshold with max comp_ret annotated
 try:
-    fig, ax1 = plt.subplots(figsize=(8,5))
+    fig, ax1 = plt.subplots(figsize=(8,6.5))
     ax2 = ax1.twinx()
     # normalize left-axis metrics
     def _norm(a):
@@ -425,7 +425,52 @@ try:
     med_arr  = np.asarray(median_ret_list)
     mdd_arr  = np.asarray(mdd_list)
     thr_arr  = np.asarray(thr_list)
-    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr)
+    # additional arrays for new metrics
+    # compute per-threshold max intra-trade drawdown (price) and sequential PnL
+    lows_all = df["l"].astype(np.float32).values
+    def _max_intratrade_dd_pct_for_mask(mask: np.ndarray) -> float:
+        if not np.any(mask):
+            return 0.0
+        ent = entry_idx[mask]
+        dd_min = 0.0
+        has_any = False
+        for k in ent:
+            end = int(k + PRED_WINDOW)
+            if end >= len(lows_all):
+                continue
+            min_low = float(np.min(lows_all[k:end+1]))
+            entry_open = float(ds.opens[int(k)]) if int(k) < len(ds.opens) else float('nan')
+            if not np.isfinite(entry_open) or entry_open <= 0:
+                continue
+            dd_i = (min_low / max(entry_open, 1e-12)) - 1.0
+            if not has_any:
+                dd_min = dd_i; has_any = True
+            else:
+                dd_min = min(dd_min, dd_i)
+        return float(abs(dd_min) * 100.0) if has_any else 0.0
+    def _pnl_seq_pct_for_mask(mask: np.ndarray) -> float:
+        if not np.any(mask):
+            return 0.0
+        ent = entry_idx[mask]
+        order = np.argsort(ent)
+        ent_sorted = ent[order]
+        r_sorted = ret_val[mask][order]
+        equity = 1.0
+        last_exit = -10**9
+        for e_i, r_i in zip(ent_sorted, r_sorted):
+            if e_i >= last_exit:
+                equity *= (1.0 + float(r_i))
+                last_exit = int(e_i + PRED_WINDOW)
+        return float((equity - 1.0) * 100.0)
+    max_intra_dd_list = []
+    pnl_seq_list = []
+    for t in thr_arr:
+        mask = (val_probs_all >= t)
+        max_intra_dd_list.append(_max_intratrade_dd_pct_for_mask(mask))
+        pnl_seq_list.append(_pnl_seq_pct_for_mask(mask))
+    intradd_arr = np.asarray(max_intra_dd_list)
+    pnlseq_arr = np.asarray(pnl_seq_list)
+    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr); intradd_n = _norm(intradd_arr); pnlseq_n = _norm(pnlseq_arr)
     # styles
     l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color='#1f77b4', linewidth=1.8)
     l2, = ax1.plot(thr_arr, pnl_n,  label='pnl_sum (norm)',  color='#ff7f0e', linewidth=1.8)
@@ -433,6 +478,12 @@ try:
     l4, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color='#7f7f7f', linestyle='--', linewidth=1.6)
     l5, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color='#2ca02c', linestyle='-', linewidth=1.6)
     l6, = ax2.plot(thr_arr, np.asarray(sharpe_list), label='Sharpe', color='#9467bd', alpha=0.9)
+    # add Trades on separate invisible y-axis
+    ax3 = ax1.twinx(); ax3.get_yaxis().set_visible(False)
+    l7, = ax3.plot(thr_arr, np.asarray(trades_list), label='Trades', color='#8c564b')
+    # new metrics on left axis
+    l8, = ax1.plot(thr_arr, intradd_n, label='Max IntraTrade DD (price, %)', color='#98df8a', linewidth=1.6)
+    l9, = ax1.plot(thr_arr, pnlseq_n, label='PnL (seq, %)', color='#d62728', linewidth=1.6)
     # constants box bottom-right; legend BELOW axes
     const_text = (
         f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
@@ -442,48 +493,89 @@ try:
     )
     ax1.text(0.94, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     handles, labels = [], []
-    for ln in (l1, l2, l3, l4, l5, l6):
+    for ln in (l1, l2, l3, l4, l5, l6, l7, l8, l9):
         handles.append(ln); labels.append(ln.get_label())
-    leg2 = ax1.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, -0.14), ncol=5)
+    leg2 = ax1.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, -0.18), ncol=5)
     ax1.grid(True, alpha=0.3)
-    # fixed-point annotations at thr_min, thirds, thr_max: include avg drawdown
+    # fixed-point annotations at thr_min, thirds, thr_max: real values, hard-anchored; lateral anti-overlap at same x
     try:
         thr_min_v = float(thr_min); thr_max_v = float(thr_max)
         delta = thr_max_v - thr_min_v
         t_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
-        def _avg_dd_for_mask(mask):
-            ent = entry_idx[mask]
-            order = np.argsort(ent)
-            r_sorted = ret_val[mask][order] if np.any(mask) else np.array([], dtype=np.float64)
-            if r_sorted.size == 0:
-                return 0.0
-            equity = np.cumprod(1.0 + r_sorted.astype(np.float64))
-            run_max = np.maximum.accumulate(equity)
-            dd = equity / (run_max + 1e-12) - 1.0
-            dd = np.clip(dd, -1.0, 0.0)
-            return float(abs(np.mean(dd)) * 100.0)
-        def _annot_series(ax, xvals, yvals_norm, yvals_real, color, compute_avg_dd=False):
-            for t in t_points:
-                idx = int(np.argmin(np.abs(xvals - t)))
-                ax.scatter([xvals[idx]],[yvals_norm[idx]], color=color, s=14)
-                label_text = f"{yvals_real[idx]:.2f}"
-                if compute_avg_dd:
-                    mask = (xvals >= t)
-                    avg_dd = _avg_dd_for_mask(mask)
-                    label_text = f"{yvals_real[idx]:.2f}\navg_dd={avg_dd:.2f}%"
-                ab = AnnotationBbox(TextArea(label_text, textprops=dict(color=color, fontsize=7)),
-                                     (xvals[idx], yvals_norm[idx]),
-                                     box_alignment=(0.5, 1.0),
-                                     bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=color, alpha=0.7))
-                ax.add_artist(ab)
-        _annot_series(ax1, thr_arr, comp_n, comp_arr, l1.get_color())
-        _annot_series(ax1, thr_arr, pnl_n,  pnl_arr,  l2.get_color(), compute_avg_dd=True)
-        _annot_series(ax1, thr_arr, mean_n, mean_arr, l3.get_color())
-        _annot_series(ax1, thr_arr, med_n,  med_arr,  l4.get_color())
-        _annot_series(ax1, thr_arr, mdd_n,  mdd_arr,  l5.get_color())
+        series = [
+            (comp_n, comp_arr, l1.get_color()),
+            (pnl_n,  pnl_arr,  l2.get_color()),
+            (mean_n, mean_arr, l3.get_color()),
+            (med_n,  med_arr,  l4.get_color()),
+            (mdd_n,  mdd_arr,  l5.get_color()),
+            (intradd_n, intradd_arr, l8.get_color()),
+            (pnlseq_n, pnlseq_arr, l9.get_color()),
+        ]
+        y_tol = 0.04
+        for t in t_points:
+            idx = int(np.argmin(np.abs(thr_arr - t)))
+            side_by_bucket = {}
+            for (yn, yr, col) in series:
+                yv = float(yn[idx]); rv = float(yr[idx])
+                ax1.scatter([thr_arr[idx]],[yv], color=col, s=14)
+                align = (0.5, 1.0)
+                bucket = int(round(yv / max(y_tol, 1e-6)))
+                used = side_by_bucket.get(bucket, None)
+                if used is None:
+                    align = (1.0, 0.5); side_by_bucket[bucket] = 'left'
+                elif used == 'left':
+                    align = (0.0, 0.5); side_by_bucket[bucket] = 'both'
+                ab = AnnotationBbox(TextArea(f"{rv:.2f}", textprops=dict(color=col, fontsize=7)),
+                                     (thr_arr[idx], yv),
+                                     box_alignment=align,
+                                     bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=col, alpha=0.7))
+                ax1.add_artist(ab)
+        # detailed annotation at max comp_ret with new metrics
+        if np.any(np.isfinite(comp_arr)):
+            i_best = int(np.nanargmax(comp_arr))
+            best_thr_local = float(thr_arr[i_best])
+            ax1.axvline(best_thr_local, color=l1.get_color(), linestyle='--', linewidth=1.0, alpha=0.7)
+            ax1.scatter([best_thr_local],[comp_n[i_best]], color=l1.get_color(), s=18)
+            mask_best = (val_probs_all >= best_thr_local)
+            n_best = int(mask_best.sum())
+            r_best = ret_val[mask_best] if n_best>0 else np.array([], dtype=np.float64)
+            sharpe_best = float(np.mean(r_best) / (np.std(r_best) + 1e-12)) if r_best.size>=2 else 0.0
+            sum_best = float(np.sum(r_best)) * 100.0
+            mean_best = float(np.mean(r_best) * 100.0) if r_best.size>0 else 0.0
+            med_best  = float(np.median(r_best) * 100.0) if r_best.size>0 else 0.0
+            ent_best = entry_idx[mask_best]
+            ord_best = np.argsort(ent_best)
+            r_sorted_best = r_best[ord_best] if r_best.size>0 else np.array([], dtype=np.float64)
+            if r_sorted_best.size>0:
+                equity_best = np.cumprod(1.0 + r_sorted_best.astype(np.float64))
+                run_max_b = np.maximum.accumulate(equity_best)
+                dd_series = equity_best / (run_max_b + 1e-12) - 1.0
+                max_dd_best = float(abs(np.min(dd_series)) * 100.0)
+                avg_dd_best = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
+            else:
+                max_dd_best = 0.0; avg_dd_best = 0.0
+            max_intra_best = _max_intratrade_dd_pct_for_mask(mask_best)
+            pnl_seq_best = _pnl_seq_pct_for_mask(mask_best)
+            text = (
+                f"comp_ret: {float(comp_arr[i_best]):.2f}%\n"
+                f"thr: {best_thr_local:.3f}\n"
+                f"trades: {n_best}\n"
+                f"pnl_sum: {sum_best:.2f}%\n"
+                f"sharpe: {sharpe_best:.2f}\n"
+                f"mean: {mean_best:.2f}%\n"
+                f"median: {med_best:.2f}%\n"
+                f"max_dd: {max_dd_best:.2f}%\n"
+                f"avg_dd: {avg_dd_best:.2f}%\n"
+                f"max_intratrade_dd: {max_intra_best:.2f}%\n"
+                f"pnl_seq: {pnl_seq_best:.2f}%"
+            )
+            ax1.annotate(text, xy=(best_thr_local, comp_n[i_best]), xycoords='data',
+                         xytext=(0.5, 1.04), textcoords='axes fraction',
+                         ha='center', va='bottom', fontsize=8,
+                         bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.85))
     except Exception:
         pass
-    plt.tight_layout(rect=[0, 0.15, 1, 1])
+    plt.tight_layout(rect=[0, 0.22, 1, 1])
 except Exception as ex:
     print(f"! Не удалось построить график перебора порога: {ex}")
 # finalize meta
