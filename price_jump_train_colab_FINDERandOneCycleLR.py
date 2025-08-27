@@ -418,7 +418,7 @@ for t in thresholds:
 print(f"Выбран порог по PnL (валидация): {best_thr:.4f}, comp_ret={best_comp*100 if np.isfinite(best_comp) else float('nan'):.2f}% trades={best_trades}")
 # plot metrics vs threshold with max comp_ret annotated
 try:
-    fig, ax1 = plt.subplots(figsize=(8,6.5))
+    fig, ax1 = plt.subplots(figsize=(9.2,6.5))
     ax2 = ax1.twinx()
     # normalize left-axis metrics
     def _norm(a):
@@ -489,14 +489,15 @@ try:
     # new metrics on left axis
     l8, = ax1.plot(thr_arr, intradd_n, label='Max IntraTrade DD (price, %)', color='#98df8a', linewidth=1.6)
     l9, = ax1.plot(thr_arr, pnlseq_n, label='PnL (seq, %)', color='#d62728', linewidth=1.6)
-    # constants box bottom-right; legend BELOW axes
+    # constants box OUTSIDE axes on the right; legend BELOW axes
     const_text = (
         f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
         f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
         f"pct_start={ONECYCLE_PCT_START}\ndiv_factor={ONECYCLE_DIV_FACTOR}\nfinal_div={ONECYCLE_FINAL_DIV_FACTOR}\n"
         f"WD={WEIGHT_DECAY}\nDROPOUT={DROPOUT_P:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}\nUSE_STANDARD_SCALER=False\nbest_lr_default={best_lr_default:.2e}"
     )
-    ax1.text(0.94, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    fig.text(0.985, 0.02, const_text, ha='right', va='bottom', fontsize=8,
+             bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     handles, labels = [], []
     for ln in (l1, l2, l3, l4, l5, l6, l7, l8, l9):
         handles.append(ln); labels.append(ln.get_label())
@@ -580,7 +581,7 @@ try:
                          bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.85))
     except Exception:
         pass
-    plt.tight_layout(rect=[0, 0.22, 1, 1])
+    plt.tight_layout(rect=[0.0, 0.22, 0.86, 1])
 except Exception as ex:
     print(f"! Не удалось построить график перебора порога: {ex}")
 # finalize meta

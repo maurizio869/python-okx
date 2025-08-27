@@ -512,7 +512,7 @@ for t in thresholds:
 print(f"Выбран порог по PnL (валидация): {best_threshold_pnl:.4f}, comp_ret={best_comp_ret*100 if np.isfinite(best_comp_ret) else float('nan'):.2f}% trades={best_trades}")
 
 try:
-    fig, ax1 = plt.subplots(figsize=(8,6.5))
+    fig, ax1 = plt.subplots(figsize=(9.2,6.5))
     ax2 = ax1.twinx()
     thr_arr = np.asarray(thr_list)
     pnl_arr = np.asarray(pnl_list)
@@ -541,13 +541,14 @@ try:
     # add Trades on separate invisible y-axis
     ax3 = ax1.twinx(); ax3.get_yaxis().set_visible(False)
     l7, = ax3.plot(thr_arr, np.asarray(trades_list), label='Trades', color='#8c564b')
-    # constants box bottom-right; legend BELOW axes
+    # constants box OUTSIDE axes on the right; legend BELOW axes
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
         f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}\nbest_lr_default={REDUCE_ON_PLATEAU_START_LR:.2e}"
     )
-    ax1.text(0.94, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+    fig.text(0.985, 0.02, const_text, ha='right', va='bottom', fontsize=8,
+             bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     handles, labels = [], []
     for ln in (l1, l2, l3, l4, l5, l6, l7, l8, l9):
         handles.append(ln); labels.append(ln.get_label())
@@ -652,7 +653,7 @@ try:
                          bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.85))
     except Exception:
         pass
-    plt.tight_layout(rect=[0, 0.22, 1, 1])
+    plt.tight_layout(rect=[0.0, 0.22, 0.86, 1])
     from datetime import datetime
     import pytz
     msk = pytz.timezone('Europe/Moscow')
