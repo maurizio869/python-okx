@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-26 15:55
+# Last modified (MSK): 2025-08-27 09:43
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -468,7 +468,7 @@ try:
         f"WD={WEIGHT_DECAY}\nDROPOUT={DEFAULT_DROPOUT:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}"
         f"\nauto_thr={AUTOTUNE_PRAUC_THRESHOLD}\nauto_gamma={AUTOTUNE_GAMMA}\nauto_WD×{AUTOTUNE_WD_MULT}"
         f"\nauto_beta1={AUTOTUNE_BETA1}\nAPPLY_BETA={AUTOTUNE_APPLY_BETA}"
-        f"\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}"
+        f"\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}"
     )
     ax.text(0.98, 0.02, const_text, transform=ax.transAxes,
             ha='right', va='bottom', fontsize=8,
@@ -588,7 +588,7 @@ try:
                   f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
                   f"pct_start={ONECYCLE_PCT_START}\ndiv_factor={ONECYCLE_DIV_FACTOR}\nfinal_div={ONECYCLE_FINAL_DIV_FACTOR}\n"
                   f"WD={WEIGHT_DECAY}\nDROPOUT={DEFAULT_DROPOUT:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}"
-                  f"\nauto_thr={AUTOTUNE_PRAUC_THRESHOLD}\nauto_gamma={AUTOTUNE_GAMMA}\nauto_WD×{AUTOTUNE_WD_MULT}\nauto_beta1={AUTOTUNE_BETA1}\nAPPLY_BETA={AUTOTUNE_APPLY_BETA}\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}")
+                  f"\nauto_thr={AUTOTUNE_PRAUC_THRESHOLD}\nauto_gamma={AUTOTUNE_GAMMA}\nauto_WD×{AUTOTUNE_WD_MULT}\nauto_beta1={AUTOTUNE_BETA1}\nAPPLY_BETA={AUTOTUNE_APPLY_BETA}\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}")
     ax1.text(0.94, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     # legend BELOW axes (outside), include Sharpe and Trades
     handles, labels = [], []
