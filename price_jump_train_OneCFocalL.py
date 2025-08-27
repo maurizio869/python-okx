@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-27 13:18
+# Last modified (MSK): 2025-08-27 13:21
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
@@ -46,7 +46,7 @@ best_lr_default = 6.17e-03
 LR_FINDER_MIN_FACTOR = 1.0/20.0
 LR_FINDER_MAX_FACTOR = 8.0
 # OneCycle shape
-BEST_LR_MULTIPLIER = 1.5
+BEST_LR_MULTIPLIER = 2.5
 CLIP_MIN_FACTOR = 0.8
 CLIP_MAX_FACTOR = 8.0
 ONECYCLE_PCT_START = 0.12
