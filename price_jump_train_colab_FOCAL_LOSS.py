@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-27 09:43
+# Last modified (MSK): 2025-08-27 10:09
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
@@ -346,7 +346,7 @@ try:
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
-        f"PNL_thr={PNL_FIXED_THRESHOLD}\nLOSS=Focal(gamma={FOCAL_GAMMA}, alpha_neg={ALPHA_NEG}, alpha_pos={ALPHA_POS})\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}\nUSE_STANDARD_SCALER=True"
+        f"PNL_thr={PNL_FIXED_THRESHOLD}\nLOSS=Focal(gamma={FOCAL_GAMMA}, alpha_neg={ALPHA_NEG}, alpha_pos={ALPHA_POS})\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}\nUSE_STANDARD_SCALER=True\nbest_lr_default={REDUCE_ON_PLATEAU_START_LR:.2e}"
     )
     ax.text(0.98, 0.02, const_text, transform=ax.transAxes,
             ha='right', va='bottom', fontsize=8,
@@ -493,7 +493,7 @@ try:
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
-        f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}\nUSE_STANDARD_SCALER=True"
+        f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}\nUSE_STANDARD_SCALER=True\nbest_lr_default={REDUCE_ON_PLATEAU_START_LR:.2e}"
     )
     ax1.text(0.94, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     handles, labels = [], []
@@ -501,25 +501,41 @@ try:
         handles.append(ln); labels.append(ln.get_label())
     leg2 = ax1.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, -0.14), ncol=5)
     ax1.grid(True, alpha=0.3)
-    # fixed-point annotations at thr_min, thirds, thr_max: real values, hard-anchored
+    # fixed-point annotations: include avg drawdown for pnl
     try:
         thr_min_v = float(THR_SWEEP_MIN); thr_max_v = float(THR_SWEEP_MAX)
         delta = thr_max_v - thr_min_v
         t_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
-        def _annot_series(ax, xvals, yvals_norm, yvals_real, color):
+        def _avg_dd_for_mask(mask):
+            ent = entry_idx[mask]
+            order = np.argsort(ent)
+            r_sorted = ret_per_trade_val[mask][order] if np.any(mask) else np.array([], dtype=np.float64)
+            if r_sorted.size == 0:
+                return 0.0
+            equity = np.cumprod(1.0 + r_sorted.astype(np.float64))
+            run_max = np.maximum.accumulate(equity)
+            dd = equity / (run_max + 1e-12) - 1.0
+            dd = np.clip(dd, -1.0, 0.0)
+            return float(abs(np.mean(dd)) * 100.0)
+        def _annot_series(ax, xvals, yvals_norm, yvals_real, color, compute_avg_dd=False):
             for t in t_points:
                 idx = int(np.argmin(np.abs(xvals - t)))
                 ax.scatter([xvals[idx]],[yvals_norm[idx]], color=color, s=14)
-                ab = AnnotationBbox(TextArea(f"{yvals_real[idx]:.2f}", textprops=dict(color=color, fontsize=7)),
+                label_text = f"{yvals_real[idx]:.2f}"
+                if compute_avg_dd:
+                    mask = (xvals >= t)
+                    avg_dd = _avg_dd_for_mask(mask)
+                    label_text = f"{yvals_real[idx]:.2f}\navg_dd={avg_dd:.2f}%"
+                ab = AnnotationBbox(TextArea(label_text, textprops=dict(color=color, fontsize=7)),
                                      (xvals[idx], yvals_norm[idx]),
                                      box_alignment=(0.5, 1.0),
                                      bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=color, alpha=0.7))
                 ax.add_artist(ab)
-        _annot_series(ax1, thr_arr, comp_n, comp_arr, l1.get_color())
-        _annot_series(ax1, thr_arr, pnl_n,  pnl_arr,  l2.get_color())
-        _annot_series(ax1, thr_arr, mean_n, mean_arr, l3.get_color())
-        _annot_series(ax1, thr_arr, med_n,  med_arr,  l4.get_color())
-        _annot_series(ax1, thr_arr, mdd_n,  mdd_arr,  l5.get_color())
+        _annot_series(ax1, thr_arr, comp_n, comp_list, l1.get_color())
+        _annot_series(ax1, thr_arr, pnl_n,  pnl_list,  l2.get_color(), compute_avg_dd=True)
+        _annot_series(ax1, thr_arr, mean_n, mean_ret_list, l3.get_color())
+        _annot_series(ax1, thr_arr, med_n,  median_ret_list,  l4.get_color())
+        _annot_series(ax1, thr_arr, mdd_n,  mdd_list,  l5.get_color())
     except Exception:
         pass
     plt.tight_layout(rect=[0, 0.15, 1, 1])

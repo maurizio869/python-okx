@@ -1,5 +1,5 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-27 09:43
+# Last modified (MSK): 2025-08-27 10:09
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
  Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -323,7 +323,7 @@ try:
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
-        f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}\nUSE_STANDARD_SCALER=True"
+        f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}\nbest_lr_default={REDUCE_ON_PLATEAU_START_LR:.2e}"
     )
     ax.text(0.98, 0.02, const_text, transform=ax.transAxes,
             ha='right', va='bottom', fontsize=8,
@@ -489,7 +489,7 @@ try:
     const_text = (
         f"VAL_SPLIT={VAL_SPLIT}\nEPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nLR0={REDUCE_ON_PLATEAU_START_LR:.2e}\n"
         f"patience0={REDUCE_ON_PLATEAU_START_PATIENCE}\nfactor={REDUCE_ON_PLATEAU_FACTOR}\nmin_lr={REDUCE_ON_PLATEAU_MIN_LR:.1e}\n"
-        f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}"
+        f"PNL_thr={PNL_FIXED_THRESHOLD}\nDROPOUT={DROPOUT_P:.3f}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}\nbest_lr_default={REDUCE_ON_PLATEAU_START_LR:.2e}"
     )
     ax1.text(0.94, 0.02, const_text, transform=ax1.transAxes, ha='right', va='bottom', fontsize=8, bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     handles, labels = [], []
