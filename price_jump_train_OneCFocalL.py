@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-27 15:16
+# Last modified (MSK): 2025-08-27 15:23
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
@@ -759,38 +759,47 @@ try:
             (pnlddd_n, pnl_ddd_arr, l11.get_color(), False),
         ]
         y_tol = 0.02
-        for t in t_points:
-            idx = int(np.argmin(np.abs(thr_arr - t)))
+        # shifted thirds to reduce overlaps at x: for series indices per-third
+        shift_map = [-1, +1, 0, -1, +1, -1, +1, 0, +1]
+        offset = 0.10 * delta
+        base_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
+        for base_idx, base_t in enumerate(base_points):
             items = []
-            for (yn, yr, col, with_avg) in series:
+            for si, (yn, yr, col, with_avg) in enumerate(series):
+                t_mod = base_t
+                if base_idx in (1, 2):
+                    sh = shift_map[si] if si < len(shift_map) else 0
+                    t_mod = base_t + sh * offset
+                    if t_mod < thr_min_v: t_mod = thr_min_v
+                    if t_mod > thr_max_v: t_mod = thr_max_v
+                idx = int(np.argmin(np.abs(thr_arr - t_mod)))
                 yv = float(yn[idx])
                 rv = float(yr[idx])
                 text = f"{rv:.2f}"
                 if with_avg:
-                    # use prob mask for averaging window
-                    mask_here = (val_probs_all_np >= t)
+                    mask_here = (val_probs_all_np >= t_mod)
                     avg_dd = _avg_dd_for_mask(mask_here)
                     text = f"{rv:.2f}\navg_dd={avg_dd:.2f}%"
-                items.append((yv, text, col))
+                items.append((yv, text, col, idx))
             buckets = {}
-            for (yv, text, col) in items:
+            for (yv, text, col, idx) in items:
                 b = int(round(yv / max(y_tol, 1e-6)))
-                buckets.setdefault(b, []).append((yv, text, col))
+                buckets.setdefault(b, []).append((yv, text, col, idx))
             for b, group in buckets.items():
                 if len(group) == 1:
-                    yv, text, col = group[0]
+                    yv, text, col, idx = group[0]
                     ax1.scatter([thr_arr[idx]],[yv], color=col, s=14)
                     ab = AnnotationBbox(TextArea(text, textprops=dict(color=col, fontsize=7)),
                                          (thr_arr[idx], yv), box_alignment=(0.5, 1.0),
-                                         bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=col, alpha=0.7))
+                                         bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=col, alpha=0.45))
                     ax1.add_artist(ab)
                 else:
-                    for k, (yv, text, col) in enumerate(group):
+                    for k, (yv, text, col, idx) in enumerate(group):
                         ax1.scatter([thr_arr[idx]],[yv], color=col, s=14)
                         align = (1.0, 0.5) if (k % 2 == 0) else (0.0, 0.5)
                         ab = AnnotationBbox(TextArea(text, textprops=dict(color=col, fontsize=7)),
                                              (thr_arr[idx], yv), box_alignment=align,
-                                             bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=col, alpha=0.7))
+                                             bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=col, alpha=0.45))
                         ax1.add_artist(ab)
 
         # annotate Sharpe and Trades at 1/6 and 1/2 of threshold range
