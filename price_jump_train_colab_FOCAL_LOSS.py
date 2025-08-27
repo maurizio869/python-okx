@@ -1,5 +1,10 @@
 # price_jump_train_colab_FOCAL_LOSS.py
 # Last modified (MSK): 2025-08-27 11:12
+# Changes:
+# - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
+# - Extend max CompRet annotation with new metrics (real values)
+# - Add Trades to legend; place legend below; restore plot proportions
+# - Implement lateral anti-overlap for value rectangles at same x
 """Обучение LSTM с Focal Loss (для усиления влияния редкого класса).
 Сохраняет лучшую модель по PR AUC и подбирает порог по PnL на валидации.
 """
