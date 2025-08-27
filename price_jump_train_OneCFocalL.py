@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-27 16:49
+# Last modified (MSK): 2025-08-27 20:46
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
@@ -735,10 +735,13 @@ try:
         panel_width = 1.0 - panel_left - 0.02
         if panel_width < 0.12:
             panel_width = 0.12
-        const_ax = fig.add_axes([panel_left, ax_pos.y0, panel_width, ax_pos.height])
+        # Detach from x-axis bottom: align top edge with y=1 of normalized curves (axes top)
+        panel_height = max(0.18, 0.35 * ax_pos.height)
+        panel_bottom = ax_pos.y1 - panel_height
+        const_ax = fig.add_axes([panel_left, panel_bottom, panel_width, panel_height])
         const_ax.axis('off')
-        const_ax.text(0.5, 0.0, const_text, ha='center', va='bottom', fontsize=8,
-                     bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
+        const_ax.text(0.5, 1.0, const_text, ha='center', va='top', fontsize=8,
+                      bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
     except Exception:
         fig.text(0.985, 0.02, const_text, ha='right', va='bottom', fontsize=8,
                  bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
