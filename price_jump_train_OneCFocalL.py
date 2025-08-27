@@ -1,5 +1,5 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-27 12:18
+# Last modified (MSK): 2025-08-27 12:24
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
@@ -40,25 +40,25 @@ MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")
 VAL_SPLIT, EPOCHS = 0.2, 360
 BATCH_SIZE, BASE_LR = 512, 3e-4
-best_lr_default = 2.17e-03
+best_lr_default = 6.17e-03
 # LR Finder
 LR_FINDER_MIN_FACTOR = 1.0/20.0
 LR_FINDER_MAX_FACTOR = 8.0
 # OneCycle shape
-BEST_LR_MULTIPLIER = 0.7
+BEST_LR_MULTIPLIER = 1.5
 CLIP_MIN_FACTOR = 0.8
 CLIP_MAX_FACTOR = 8.0
 ONECYCLE_PCT_START = 0.12
 ONECYCLE_DIV_FACTOR = 2.0
-ONECYCLE_FINAL_DIV_FACTOR = 3.5
-WEIGHT_DECAY = 3.5e-5
+ONECYCLE_FINAL_DIV_FACTOR = 5.5
+WEIGHT_DECAY = 4.5e-5
 DEFAULT_DROPOUT = 0.35
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EARLY_STOP_EPOCHS = 80
 NPR_EPS = 1e-12
 SAVE_MIN_PR_AUC = 0.60
-GRADCLIP_MAXNORM_1_APPLY = False
-GRADCLIP_MAXNORM = 1.0
+GRADCLIP_MAXNORM_1_APPLY = True
+GRADCLIP_MAXNORM = 0.8
 USE_STANDARD_SCALER = False
 USE_EARLY_STOP = False
 
@@ -688,51 +688,75 @@ try:
                                              bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=col, alpha=0.7))
                         ax1.add_artist(ab)
 
-        # extend max CompRet annotation with new metrics
-        if np.any(np.isfinite(comp_arr)):
-            i_best = int(np.nanargmax(comp_arr))
-            best_thr_local = float(thr_arr[i_best])
-            ax1.axvline(best_thr_local, color=l1.get_color(), linestyle='--', linewidth=1.0, alpha=0.7)
-            ax1.scatter([best_thr_local],[comp_n[i_best]], color=l1.get_color(), s=18)
-            mask_best = (val_probs_all >= best_thr_local)
-            n_best = int(mask_best.sum())
-            r_best = ret_val[mask_best] if n_best>0 else np.array([], dtype=np.float64)
-            sharpe_best = float(np.mean(r_best) / (np.std(r_best) + 1e-12)) if r_best.size>=2 else 0.0
-            sum_best = float(np.sum(r_best) * 100.0)
-            mean_best = float(np.mean(r_best) * 100.0) if r_best.size>0 else 0.0
-            med_best  = float(np.median(r_best) * 100.0) if r_best.size>0 else 0.0
-            ent_best = entry_idx[mask_best]
-            ord_best = np.argsort(ent_best)
-            r_sorted_best = r_best[ord_best] if r_best.size>0 else np.array([], dtype=np.float64)
-            if r_sorted_best.size>0:
-                equity_best = np.cumprod(1.0 + r_sorted_best.astype(np.float64))
-                run_max_b = np.maximum.accumulate(equity_best)
-                dd_series = equity_best / (run_max_b + 1e-12) - 1.0
-                max_dd_best = float(abs(np.min(dd_series)) * 100.0)
-                avg_dd_best = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
-            else:
-                max_dd_best = 0.0; avg_dd_best = 0.0
-            max_intra_best = _max_intratrade_dd_pct_for_mask(mask_best)
-            pnl_seq_best = _pnl_seq_pct_for_mask(mask_best)
-            text = (
-                f"comp_ret: {float(comp_arr[i_best]):.2f}%\n"
-                f"thr: {best_thr_local:.3f}\n"
-                f"trades: {n_best}\n"
-                f"pnl_sum: {sum_best:.2f}%\n"
-                f"sharpe: {sharpe_best:.2f}\n"
-                f"mean: {mean_best:.2f}%\n"
-                f"median: {med_best:.2f}%\n"
-                f"max_dd: {max_dd_best:.2f}%\n"
-                f"avg_dd: {avg_dd_best:.2f}%\n"
-                f"max_intratrade_dd: {max_intra_best:.2f}%\n"
-                f"pnl_seq: {pnl_seq_best:.2f}%"
-            )
-            ax1.annotate(text, xy=(best_thr_local, comp_n[i_best]), xycoords='data',
-                         xytext=(0.5, 1.04), textcoords='axes fraction',
-                         ha='center', va='bottom', fontsize=8,
-                         bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.85))
+        # annotate Sharpe and Trades at 1/6 and 1/2 of threshold range
+        try:
+            t_points_shrt = [thr_min_v + delta/6.0, thr_min_v + 0.5*delta]
+            for t in t_points_shrt:
+                idx = int(np.argmin(np.abs(thr_arr - t)))
+                # Sharpe (right axis)
+                y_shp = float(shp_arr[idx])
+                ax2.scatter([thr_arr[idx]],[y_shp], color=l6.get_color(), s=14)
+                ab_shp = AnnotationBbox(TextArea(f"{y_shp:.2f}", textprops=dict(color=l6.get_color(), fontsize=7)),
+                                        (thr_arr[idx], y_shp),
+                                        box_alignment=(0.5, 1.0),
+                                        bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=l6.get_color(), alpha=0.7))
+                ax2.add_artist(ab_shp)
+                # Trades (hidden right axis)
+                y_tr = float(np.asarray(trades_list)[idx])
+                ax3.scatter([thr_arr[idx]],[y_tr], color=l7.get_color(), s=14)
+                ab_tr = AnnotationBbox(TextArea(f"{int(y_tr)}", textprops=dict(color=l7.get_color(), fontsize=7)),
+                                        (thr_arr[idx], y_tr),
+                                        box_alignment=(0.5, 1.0),
+                                        bboxprops=dict(boxstyle='round,pad=0.15', fc='white', ec=l7.get_color(), alpha=0.7))
+                ax3.add_artist(ab_tr)
+        except Exception:
+            pass
     except Exception:
         pass
+    # extend max CompRet annotation with new metrics
+    if np.any(np.isfinite(comp_arr)):
+        i_best = int(np.nanargmax(comp_arr))
+        best_thr_local = float(thr_arr[i_best])
+        ax1.axvline(best_thr_local, color=l1.get_color(), linestyle='--', linewidth=1.0, alpha=0.7)
+        ax1.scatter([best_thr_local],[comp_n[i_best]], color=l1.get_color(), s=18)
+        mask_best = (val_probs_all >= best_thr_local)
+        n_best = int(mask_best.sum())
+        r_best = ret_val[mask_best] if n_best>0 else np.array([], dtype=np.float64)
+        sharpe_best = float(np.mean(r_best) / (np.std(r_best) + 1e-12)) if r_best.size>=2 else 0.0
+        sum_best = float(np.sum(r_best) * 100.0)
+        mean_best = float(np.mean(r_best) * 100.0) if r_best.size>0 else 0.0
+        med_best  = float(np.median(r_best) * 100.0) if r_best.size>0 else 0.0
+        ent_best = entry_idx[mask_best]
+        ord_best = np.argsort(ent_best)
+        r_sorted_best = r_best[ord_best] if r_best.size>0 else np.array([], dtype=np.float64)
+        if r_sorted_best.size>0:
+            equity_best = np.cumprod(1.0 + r_sorted_best.astype(np.float64))
+            run_max_b = np.maximum.accumulate(equity_best)
+            dd_series = equity_best / (run_max_b + 1e-12) - 1.0
+            max_dd_best = float(abs(np.min(dd_series)) * 100.0)
+            avg_dd_best = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
+        else:
+            max_dd_best = 0.0; avg_dd_best = 0.0
+        max_intra_best = _max_intratrade_dd_pct_for_mask(mask_best)
+        pnl_seq_best = _pnl_seq_pct_for_mask(mask_best)
+        text = (
+            f"comp_ret: {float(comp_arr[i_best]):.2f}%\n"
+            f"thr: {best_thr_local:.3f}\n"
+            f"trades: {n_best}\n"
+            f"pnl_sum: {sum_best:.2f}%\n"
+            f"sharpe: {sharpe_best:.2f}\n"
+            f"mean: {mean_best:.2f}%\n"
+            f"median: {med_best:.2f}%\n"
+            f"max_dd: {max_dd_best:.2f}%\n"
+            f"avg_dd: {avg_dd_best:.2f}%\n"
+            f"max_intratrade_dd: {max_intra_best:.2f}%\n"
+            f"pnl_seq: {pnl_seq_best:.2f}%"
+        )
+        ax1.annotate(text, xy=(best_thr_local, comp_n[i_best]), xycoords='data',
+                     xytext=(0.5, 1.04), textcoords='axes fraction',
+                     ha='center', va='bottom', fontsize=8,
+                     bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.85))
+    # keep tight_layout inside try
     plt.tight_layout(rect=[0.0, 0.22, 0.86, 1])
     out_name = f'threshold_sweep_{ts}.png'; fig.savefig(out_name, dpi=130)
     print(f"Saved threshold sweep plot to {Path(out_name).resolve()}"); plt.show()
