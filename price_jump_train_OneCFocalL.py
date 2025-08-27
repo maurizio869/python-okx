@@ -1,12 +1,12 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-27 15:25
+# Last modified (MSK): 2025-08-27 15:43
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
 # - Move threshold constants block outside axes on the right; legend stays bottom
 # - Increase threshold figure height and bottom padding to preserve plot proportions
 # - Fix threshold bug: use NumPy array for val_probs_all comparisons (masks, avg_dd, mask_best)
-# - Params: BEST_LR_MULTIPLIER=2.0; ONECYCLE_FINAL_DIV_FACTOR=7.5; WEIGHT_DECAY=4.5e-5; EPOCHS=400
+# - Params: BEST_LR_MULTIPLIER=2.0; ONECYCLE_FINAL_DIV_FACTOR=7.5; WEIGHT_DECAY=4.5e-5; EPOCHS=400; add 2 new features (upper_wick/body, lower_wick/body) and set input_size=7
 # - Add avg_dd (seq, price) line + rectangles; add pnl_ddd metric; double figure size; improve rectangle anti-overlap; constants bottom aligned with x-axis; refine pnl_ddd exit (close-open current < close-open prev, prev green, +0.25%)
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
@@ -107,16 +107,22 @@ class CandleDataset(Dataset):
             windows = []
             for sample_idx in sample_indices:
                 i, _ = self.samples[sample_idx]
+                closes_w = self.closes[i-SEQ_LEN:i]
+                opens_w  = self.opens[i-SEQ_LEN:i]
+                highs_w  = self.highs[i-SEQ_LEN:i]
+                lows_w   = self.lows[i-SEQ_LEN:i]
+                vols_w   = self.volumes[i-SEQ_LEN:i]
+                body_w   = np.abs(closes_w - opens_w) + 1e-12
+                upper_w  = np.clip(highs_w - np.maximum(opens_w, closes_w), 0.0, None)
+                lower_w  = np.clip(np.minimum(opens_w, closes_w) - lows_w, 0.0, None)
+                ratio_up = upper_w / body_w
+                ratio_dn = lower_w / body_w
                 x_seq_t = np.stack([
-                    self.closes[i-SEQ_LEN:i],
-                    self.opens[i-SEQ_LEN:i],
-                    self.highs[i-SEQ_LEN:i],
-                    self.lows[i-SEQ_LEN:i],
-                    self.volumes[i-SEQ_LEN:i],
-                ], axis=1)  # shape (SEQ_LEN, 5)
+                    closes_w, opens_w, highs_w, lows_w, vols_w, ratio_up, ratio_dn
+                ], axis=1)  # shape (SEQ_LEN, 7)
                 windows.append(x_seq_t)
             if len(windows) > 0:
-                feats = np.concatenate(windows, axis=0)  # (N*SEQ_LEN, 5)
+                feats = np.concatenate(windows, axis=0)  # (N*SEQ_LEN, 7)
                 self.scaler = StandardScaler().fit(feats)
                 self.use_scaler = True
         except Exception:
@@ -128,21 +134,33 @@ class CandleDataset(Dataset):
 
     def __getitem__(self, idx: int):
         i, y = self.samples[idx]
+        closes_w = self.closes[i-SEQ_LEN:i]
+        opens_w  = self.opens[i-SEQ_LEN:i]
+        highs_w  = self.highs[i-SEQ_LEN:i]
+        lows_w   = self.lows[i-SEQ_LEN:i]
+        vols_w   = self.volumes[i-SEQ_LEN:i]
+        body_w   = np.abs(closes_w - opens_w) + 1e-12
+        upper_w  = np.clip(highs_w - np.maximum(opens_w, closes_w), 0.0, None)
+        lower_w  = np.clip(np.minimum(opens_w, closes_w) - lows_w, 0.0, None)
+        ratio_up = upper_w / body_w
+        ratio_dn = lower_w / body_w
         x_seq = np.stack([
-            self.closes[i-SEQ_LEN:i],
-            self.opens[i-SEQ_LEN:i],
-            self.highs[i-SEQ_LEN:i],
-            self.lows[i-SEQ_LEN:i],
-            self.volumes[i-SEQ_LEN:i],
-        ], axis=0).astype(np.float32)  # (5, SEQ_LEN)
+            closes_w,
+            opens_w,
+            highs_w,
+            lows_w,
+            vols_w,
+            ratio_up,
+            ratio_dn,
+        ], axis=0).astype(np.float32)  # (7, SEQ_LEN)
         if self.use_scaler and self.scaler is not None:
-            x_seq = self.scaler.transform(x_seq.T).T.astype(np.float32)  # (5, SEQ_LEN)
+            x_seq = self.scaler.transform(x_seq.T).T.astype(np.float32)
         return torch.from_numpy(x_seq), int(y)
 
 class LSTMClassifier(nn.Module):
     def __init__(self, hidden_size: int = 64, num_layers: int = 2, dropout: float = DEFAULT_DROPOUT):
         super().__init__()
-        self.lstm = nn.LSTM(input_size=5, hidden_size=hidden_size, num_layers=num_layers,
+        self.lstm = nn.LSTM(input_size=7, hidden_size=hidden_size, num_layers=num_layers,
                             dropout=dropout if num_layers > 1 else 0.0, batch_first=True)
         self.fc = nn.Linear(hidden_size, 2)
     def forward(self, x: torch.Tensor) -> torch.Tensor:
