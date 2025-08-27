@@ -1,10 +1,11 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-27 12:24
+# Last modified (MSK): 2025-08-27 13:17
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
 # - Move threshold constants block outside axes on the right; legend stays bottom
 # - Increase threshold figure height and bottom padding to preserve plot proportions
+# - Fix threshold bug: use NumPy array for val_probs_all comparisons (masks, avg_dd, mask_best)
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
