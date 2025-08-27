@@ -7,7 +7,7 @@
 # - Increase threshold figure height and bottom padding to preserve plot proportions
 # - Fix threshold bug: use NumPy array for val_probs_all comparisons (masks, avg_dd, mask_best)
 # - Params: BEST_LR_MULTIPLIER=2.0; ONECYCLE_FINAL_DIV_FACTOR=7.5; WEIGHT_DECAY=4.5e-5; EPOCHS=400; add 2 new features (upper_wick/body, lower_wick/body) and set input_size=7
-# - Add avg_dd (seq, price) line + rectangles; add pnl_ddd metric; double figure size; improve rectangle anti-overlap; constants bottom aligned with x-axis; refine pnl_ddd exit (close-open current < close-open prev, prev green, +0.25%)
+# - Rename pnl_ddd -> pnl_vas across threshold plot and annotations
 """OneCycle LSTM training with Focal Loss.
 Based on current OneCycle script; integrates Focal Loss for class imbalance.
 """
@@ -650,8 +650,8 @@ try:
                 last_exit = int(e_i + PRED_WINDOW)
         return float(np.mean(dd_vals) * 100.0) if len(dd_vals) > 0 else 0.0
     avgdd_seq_list = [ _avg_price_dd_seq_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
-    # pnl_ddd (seq) per threshold with dynamic exit rules
-    def _pnl_ddd_pct_for_mask(mask: np.ndarray) -> float:
+    # pnl_vas (seq) per threshold with dynamic exit rules
+    def _pnl_vas_pct_for_mask(mask: np.ndarray) -> float:
         if not np.any(mask):
             return 0.0
         ent = entry_idx[mask]
@@ -697,13 +697,13 @@ try:
             equity *= (1.0 + r_i)
             last_exit = exit_idx
         return float((equity - 1.0) * 100.0)
-    pnl_ddd_list = [ _pnl_ddd_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
-    pnl_ddd_arr = np.asarray(pnl_ddd_list)
+    pnl_vas_list = [ _pnl_vas_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
+    pnl_vas_arr = np.asarray(pnl_vas_list)
     avgdd_arr = np.asarray(avgdd_seq_list)
     def _norm(a):
         a = np.asarray(a, dtype=np.float64)
         return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a) + 1e-12) if a.size>0 else a
-    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr); intradd_n = _norm(intradd_arr); pnlseq_n = _norm(pnlseq_arr); avgdd_n = _norm(avgdd_arr); pnlddd_n = _norm(pnl_ddd_arr)
+    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr); intradd_n = _norm(intradd_arr); pnlseq_n = _norm(pnlseq_arr); avgdd_n = _norm(avgdd_arr); pnlvas_n = _norm(pnl_vas_arr)
 
     # styles: mean black dashed, median gray dashed; others distinct
     l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color='#1f77b4', linewidth=1.8)
@@ -719,8 +719,8 @@ try:
     l8, = ax1.plot(thr_arr, intradd_n, label='Max IntraTrade DD (price, %)', color='#98df8a', linewidth=1.6)
     l9, = ax1.plot(thr_arr, pnlseq_n, label='PnL (seq, %)', color='#d62728', linewidth=1.6)
     l10, = ax1.plot(thr_arr, avgdd_n, label='avg_dd (%)', color='#17becf', linewidth=1.6)
-    l11, = ax1.plot(thr_arr, pnlddd_n, label='PnL (ddd, %)', color='#bcbd22', linewidth=1.6)
-    # placeholder for pnl_ddd; will compute below
+    l11, = ax1.plot(thr_arr, pnlvas_n, label='PnL (vas, %)', color='#bcbd22', linewidth=1.6)
+    # placeholder for pnl_vas; will compute below
 
     # constants box outside on the right; legend below
     const_text = (f"SEQ_LEN={SEQ_LEN}\nPRED_WINDOW={PRED_WINDOW}\nVAL_SPLIT={VAL_SPLIT}\n"
@@ -777,7 +777,7 @@ try:
             (intradd_n, intradd_arr, l8.get_color(), False),
             (pnlseq_n, pnlseq_arr, l9.get_color(), False),
             (avgdd_n, avgdd_arr, l10.get_color(), False),
-            (pnlddd_n, pnl_ddd_arr, l11.get_color(), False),
+            (pnlvas_n, pnl_vas_arr, l11.get_color(), False),
         ]
         y_tol = 0.02
         # shifted thirds to reduce overlaps at x: for series indices per-third
@@ -875,7 +875,7 @@ try:
         max_intra_best = _max_intratrade_dd_pct_for_mask(mask_best)
         pnl_seq_best = _pnl_seq_pct_for_mask(mask_best)
         avg_dd_seq_best = _avg_price_dd_seq_pct_for_mask(mask_best)
-        pnl_ddd_best = _pnl_ddd_pct_for_mask(mask_best)
+        pnl_vas_best = _pnl_vas_pct_for_mask(mask_best)
         text = (
             f"comp_ret: {float(comp_arr[i_best]):.2f}%\n"
             f"thr: {best_thr_local:.3f}\n"
@@ -888,7 +888,7 @@ try:
             f"avg_dd: {avg_dd_seq_best:.2f}%\n"
             f"max_intratrade_dd: {max_intra_best:.2f}%\n"
             f"pnl_seq: {pnl_seq_best:.2f}%\n"
-            f"pnl_ddd: {pnl_ddd_best:.2f}%"
+            f"pnl_vas: {pnl_vas_best:.2f}%"
         )
         ax1.annotate(text, xy=(best_thr_local, comp_n[i_best]), xycoords='data',
                      xytext=(0.5, 1.04), textcoords='axes fraction',
