@@ -518,13 +518,19 @@ val_targets_all=[]; val_probs_all=[]; val_preds_all=[]
 with torch.no_grad():
     for xb,yb in val_loader:
         logits=model(xb.to(DEVICE)); prob1=torch.softmax(logits,dim=1)[:,1].cpu()
+
         pred=(prob1>=0.5).to(torch.long); y_cpu=yb.to(torch.long)
         val_targets_all.extend(y_cpu.tolist()); val_probs_all.extend(prob1.tolist()); val_preds_all.extend(pred.cpu().tolist())
+
 ret_val = exit_closes/np.maximum(entry_opens,1e-12)-1.0
+# ensure numpy array for threshold masking
+val_probs_all_np = np.asarray(val_probs_all, dtype=np.float32)
 thr_min,thr_max,thr_step=0.15,0.99,0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
+
 thresholds=np.arange(thr_min,thr_max+1e-12,thr_step)
 thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]; trades_list=[]; mean_ret_list=[]; median_ret_list=[]; mdd_list=[]
+
 max_intra_dd_list=[]; pnl_seq_list=[]
 
 def _safe_sharpe_arr(r: np.ndarray) -> float:
@@ -534,12 +540,13 @@ def _safe_sharpe_arr(r: np.ndarray) -> float:
 
 best_comp=-np.inf; best_thr=float(thresholds[0]); best_trades=0
 for t in thresholds:
-    m=(val_probs_all>=t); n=int(m.sum())
+    m=(val_probs_all_np>=t); n=int(m.sum())
     if n==0:
         comp=-np.inf; shp=0.0; sret=0.0
     else:
         r=ret_val[m]
         comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
+
         shp=_safe_sharpe_arr(r)
         sret=float(np.sum(r))
         meanp = float(np.mean(r)*100.0)
@@ -663,7 +670,8 @@ try:
                 rv = float(yr[idx])
                 text = f"{rv:.2f}"
                 if with_avg:
-                    mask_here = (thr_arr >= t)
+                    # use prob mask for averaging window
+                    mask_here = (val_probs_all_np >= t)
                     avg_dd = _avg_dd_for_mask(mask_here)
                     text = f"{rv:.2f}\navg_dd={avg_dd:.2f}%"
                 items.append((yv, text, col))
@@ -719,7 +727,7 @@ try:
         best_thr_local = float(thr_arr[i_best])
         ax1.axvline(best_thr_local, color=l1.get_color(), linestyle='--', linewidth=1.0, alpha=0.7)
         ax1.scatter([best_thr_local],[comp_n[i_best]], color=l1.get_color(), s=18)
-        mask_best = (val_probs_all >= best_thr_local)
+        mask_best = (val_probs_all_np >= best_thr_local)
         n_best = int(mask_best.sum())
         r_best = ret_val[mask_best] if n_best>0 else np.array([], dtype=np.float64)
         sharpe_best = float(np.mean(r_best) / (np.std(r_best) + 1e-12)) if r_best.size>=2 else 0.0
