@@ -48,35 +48,38 @@ best_lr_default = 6.17e-03
 LR_FINDER_MIN_FACTOR = 1.0/20.0
 LR_FINDER_MAX_FACTOR = 8.0
 # OneCycle shape
-BEST_LR_MULTIPLIER = 2.0
+BEST_LR_MULTIPLIER = 2.4
 CLIP_MIN_FACTOR = 0.8
 CLIP_MAX_FACTOR = 8.0
 ONECYCLE_PCT_START = 0.12
 ONECYCLE_DIV_FACTOR = 2.0
 ONECYCLE_FINAL_DIV_FACTOR = 7.5
 WEIGHT_DECAY = 4.5e-5
-DEFAULT_DROPOUT = 0.35
+DEFAULT_DROPOUT = 0.37
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EARLY_STOP_EPOCHS = 80
 NPR_EPS = 1e-12
 SAVE_MIN_PR_AUC = 0.60
 GRADCLIP_MAXNORM_1_APPLY = True
-GRADCLIP_MAXNORM = 0.8
+GRADCLIP_MAXNORM = 0.9
 USE_STANDARD_SCALER = False
 USE_EARLY_STOP = False
 
-# PnL_DDD parameters (sequential, dynamic exit)
-PNL_DDD_THRESH_PCT = 0.0025   # +0.25% above entry open
-PNL_DDD_STOP_LOSS_PCT = -0.002  # -0.20% stop vs entry open
-PNL_DDD_MAX_HOLD_MIN = 10      # fallback hold minutes if no early exit
+# PnL_VAS parameters (sequential, dynamic exit)
+PNL_VAS_THRESH_PCT = 0.0025   # +0.25% above entry open
+PNL_VAS_MAX_HOLD_MIN = 10     # fallback hold minutes if no early exit
+PNL_VAS_SWEEP_THR = 0.55      # fixed threshold for SL sweep
+PNL_VAS_SL_MIN = -0.006       # -0.6%
+PNL_VAS_SL_MAX = -0.0001      # -0.01%
+PNL_VAS_SL_STEP = 0.0001      # 0.01%
 
 # Focal Loss params
 FOCAL_GAMMA = 1.5
 
 # Autotune parameters (triggered once when PR_AUC crosses threshold)
 AUTOTUNE_PRAUC_THRESHOLD = 0.601
-AUTOTUNE_GAMMA = 1.4
-AUTOTUNE_WD_MULT = 1.5
+AUTOTUNE_GAMMA = 1.6
+AUTOTUNE_WD_MULT = 1.1
 AUTOTUNE_BETA1 = 0.8
 AUTOTUNE_APPLY_BETA = True
 
@@ -651,7 +654,7 @@ try:
         return float(np.mean(dd_vals) * 100.0) if len(dd_vals) > 0 else 0.0
     avgdd_seq_list = [ _avg_price_dd_seq_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
     # pnl_vas (seq) per threshold with dynamic exit rules
-    def _pnl_vas_pct_for_mask(mask: np.ndarray) -> float:
+    def _pnl_vas_pct_for_mask(mask: np.ndarray, stop_loss_pct: float) -> float:
         if not np.any(mask):
             return 0.0
         ent = entry_idx[mask]
@@ -666,15 +669,15 @@ try:
             if not np.isfinite(entry_open) or entry_open <= 0:
                 continue
             exit_idx = None
-            # scan up to max( PNL_DDD_MAX_HOLD_MIN, PRED_WINDOW )
-            max_h = int(max(PNL_DDD_MAX_HOLD_MIN, PRED_WINDOW))
+            # scan up to max(PNL_VAS_MAX_HOLD_MIN, PRED_WINDOW)
+            max_h = int(max(PNL_VAS_MAX_HOLD_MIN, PRED_WINDOW))
             for k in range(1, max_h+1):
                 j = int(e_i + k)
                 if j >= len(ds.opens):
                     break
                 # stop-loss check (intra-minute via lows)
                 low_j = float(ds.lows[j])
-                if (low_j / entry_open - 1.0) <= PNL_DDD_STOP_LOSS_PCT:
+                if (low_j / entry_open - 1.0) <= stop_loss_pct:
                     exit_idx = j
                     break
                 # dynamic exit condition
@@ -685,21 +688,34 @@ try:
                 body_current = (close_j - open_j)
                 body_prev = (close_prev - open_prev)
                 body_smaller = (body_current < body_prev)
-                price_up_enough = ((close_j / entry_open - 1.0) >= PNL_DDD_THRESH_PCT)
+                price_up_enough = ((close_j / entry_open - 1.0) >= PNL_VAS_THRESH_PCT)
                 if body_smaller and prev_green and price_up_enough:
                     exit_idx = j
                     break
             if exit_idx is None:
-                exit_idx = int(e_i + max(PNL_DDD_MAX_HOLD_MIN, PRED_WINDOW))
+                exit_idx = int(e_i + max(PNL_VAS_MAX_HOLD_MIN, PRED_WINDOW))
                 if exit_idx >= len(ds.closes):
                     exit_idx = len(ds.closes) - 1
             r_i = float(ds.closes[exit_idx] / entry_open - 1.0)
             equity *= (1.0 + r_i)
             last_exit = exit_idx
         return float((equity - 1.0) * 100.0)
-    pnl_vas_list = [ _pnl_vas_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
+
+    # Select best stop-loss for pnl_vas at fixed threshold
+    sl_values = np.arange(PNL_VAS_SL_MIN, PNL_VAS_SL_MAX + 1e-12, PNL_VAS_SL_STEP, dtype=np.float64)
+    best_sl = PNL_VAS_SL_MIN
+    best_pnl_vas = -np.inf
+    # mask at fixed threshold
+    mask_fixed_thr = (val_probs_all_np >= float(PNL_VAS_SWEEP_THR))
+    for sl in sl_values:
+        pnl_here = _pnl_vas_pct_for_mask(mask_fixed_thr, float(sl))
+        if pnl_here > best_pnl_vas:
+            best_pnl_vas = pnl_here
+            best_sl = float(sl)
+    # compute pnl_vas across thresholds using selected stop-loss
+    pnl_vas_list = [ _pnl_vas_pct_for_mask((val_probs_all_np >= t), best_sl) for t in thr_arr ]
     pnl_vas_arr = np.asarray(pnl_vas_list)
-    avgdd_arr = np.asarray(avgdd_seq_list)
+
     def _norm(a):
         a = np.asarray(a, dtype=np.float64)
         return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a) + 1e-12) if a.size>0 else a
@@ -875,7 +891,7 @@ try:
         max_intra_best = _max_intratrade_dd_pct_for_mask(mask_best)
         pnl_seq_best = _pnl_seq_pct_for_mask(mask_best)
         avg_dd_seq_best = _avg_price_dd_seq_pct_for_mask(mask_best)
-        pnl_vas_best = _pnl_vas_pct_for_mask(mask_best)
+        pnl_vas_best = _pnl_vas_pct_for_mask(mask_best, PNL_VAS_SL_MIN + (best_thr_local - thr_min) * (PNL_VAS_SL_MAX - PNL_VAS_SL_MIN) / (thr_max - thr_min))
         text = (
             f"comp_ret: {float(comp_arr[i_best]):.2f}%\n"
             f"thr: {best_thr_local:.3f}\n"
