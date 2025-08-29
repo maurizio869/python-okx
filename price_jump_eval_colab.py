@@ -1,5 +1,8 @@
 # price_jump_eval_colab.py
-# Last modified (MSK): 2025-08-19 15:05
+# Last modified (MSK): 2025-08-29 14:21 — правка номер 1
+# Changes:
+# - Add maker/taker fees with switch; compute net returns (r_net)
+# - Save commission fields in viz_data.npz (net stats)
 """Коллаб-ячейка: загрузка чекпойнта, расчёт предсказаний,
 сохранение данных для визуализации (без вывода графика).
 """
@@ -181,5 +184,10 @@ np.savez_compressed(
     seq_len=np.int32(SEQ_LEN),
     pred_window=np.int32(PRED_WINDOW),
     threshold=np.float32(best_threshold),
+    maker_fee=np.float32(MAKER_FEE),
+    taker_fee=np.float32(TAKER_FEE),
+    use_maker_fees=np.bool_(USE_MAKER_FEES),
+    entry_fee=np.float32(ENTRY_FEE),
+    exit_fee=np.float32(EXIT_FEE),
 )
 print("✓ Данные сохранены:", OUT_DATA)
