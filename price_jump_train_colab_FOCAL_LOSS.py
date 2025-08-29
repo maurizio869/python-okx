@@ -1,5 +1,5 @@
 # price_jump_train_colab_FOCAL_LOSS.py
-# Last modified (MSK): 2025-08-27 11:12
+# Last modified (MSK): 2025-08-29 14:43 — правка номер 1
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
@@ -22,6 +22,13 @@ import math
 import time
 import matplotlib.pyplot as plt
 from matplotlib.offsetbox import AnnotationBbox, TextArea
+# Commissions (maker/taker) — net PnL calculations
+MAKER_FEE = 0.0002
+TAKER_FEE = 0.0005
+USE_MAKER_FEES = False
+ENTRY_FEE = MAKER_FEE if USE_MAKER_FEES else TAKER_FEE
+EXIT_FEE  = MAKER_FEE if USE_MAKER_FEES else TAKER_FEE
+
 
 # Hoisted constants
 REDUCE_ON_PLATEAU_START_LR = 4e-4
@@ -268,7 +275,9 @@ for e in range(1, EPOCHS + 1):
     p_rate = float(np.mean(val_targets)) if len(val_targets) else 0.0
     npr_auc = (pr_auc - p_rate) / (1.0 - p_rate + 1e-12)
 
-    # PnL with fixed threshold 0.565 on validation
+    # Precompute net per-trade returns for fixed-threshold PnL (net)
+    ret_per_trade_val_fixed = (ds.closes[entry_idx + PRED_WINDOW] * (1.0 - EXIT_FEE)) / (np.maximum(ds.opens[entry_idx], MIN_DENOM_EPS) * (1.0 + ENTRY_FEE)) - 1.0
+    # PnL with fixed threshold 0.565 on validation (net)
     val_probs_np = np.asarray(val_probs, dtype=np.float32)
     mask_fixed = val_probs_np >= PNL_FIXED_THRESHOLD
     trades_fixed = int(mask_fixed.sum())
@@ -413,7 +422,7 @@ val_indices = np.asarray(val_ds.indices, dtype=np.int64)
 entry_idx = val_indices + SEQ_LEN
 entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
-ret_per_trade_val = exit_closes / np.maximum(entry_opens, MIN_DENOM_EPS) - 1.0
+ret_per_trade_val = (exit_closes * (1.0 - EXIT_FEE)) / (np.maximum(entry_opens, MIN_DENOM_EPS) * (1.0 + ENTRY_FEE)) - 1.0
 # lows for intra-trade drawdown computations
 lows_all = df["l"].astype(np.float32).values
 
