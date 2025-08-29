@@ -23,6 +23,13 @@ OUT_DATA = Path("viz_data.npz")       # куда сохранить данные
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # ──────────────────────────────────────────────────────────────────
 
+# ─── КОМИССИИ (по умолчанию taker; легко переключить на maker) ───
+MAKER_FEE = 0.0002
+TAKER_FEE = 0.0005
+USE_MAKER_FEES = False
+ENTRY_FEE = MAKER_FEE if USE_MAKER_FEES else TAKER_FEE
+EXIT_FEE  = MAKER_FEE if USE_MAKER_FEES else TAKER_FEE
+
 # defaults (will be overwritten by meta if present)
 SEQ_LEN, PRED_WINDOW = 30, 5
 THRESHOLD = 0.8   # порог вероятности для присвоения класса 1
@@ -106,7 +113,9 @@ opens_arr  = df["o"].astype(np.float32).values
 closes_arr = df["c"].astype(np.float32).values
 entry_opens = opens_arr[SEQ_LEN : len(df) - PRED_WINDOW]
 exit_closes = closes_arr[SEQ_LEN + PRED_WINDOW : len(df)]
-ret_per_trade = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
+ret_per_trade_gross = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
+# net с учётом комиссий (вход + выход)
+ret_per_trade = (exit_closes * (1.0 - EXIT_FEE)) / (np.maximum(entry_opens, 1e-12) * (1.0 + ENTRY_FEE)) - 1.0
 
 mask = probs >= best_threshold
 num_trades = int(mask.sum())
