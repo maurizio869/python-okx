@@ -23,6 +23,13 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import f1_score, roc_auc_score, average_precision_score
 from torch.utils.data import Dataset, DataLoader, random_split
 
+# Commissions (maker/taker) — net PnL calculations
+MAKER_FEE = 0.0002
+TAKER_FEE = 0.0005
+USE_MAKER_FEES = False
+ENTRY_FEE = MAKER_FEE if USE_MAKER_FEES else TAKER_FEE
+EXIT_FEE  = MAKER_FEE if USE_MAKER_FEES else TAKER_FEE
+
 # Reproducibility
 SEED = 42
 random.seed(SEED); np.random.seed(SEED); torch.manual_seed(SEED)
@@ -294,7 +301,7 @@ except Exception as ex:
 val_indices = np.asarray(val_ds.indices, dtype=np.int64)
 entry_idx = val_indices + SEQ_LEN
 entry_opens = ds.opens[entry_idx]; exit_closes = ds.closes[entry_idx + PRED_WINDOW]
-ret_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
+ret_val_fixed = (exit_closes * (1.0 - EXIT_FEE)) / (np.maximum(entry_opens, 1e-12) * (1.0 + ENTRY_FEE)) - 1.0
 thr_min, thr_max, thr_step = 0.15, 0.99, 0.0025
 last_best_thr = 0.565
 
@@ -551,7 +558,7 @@ with torch.no_grad():
         pred=(prob1>=0.5).to(torch.long); y_cpu=yb.to(torch.long)
         val_targets_all.extend(y_cpu.tolist()); val_probs_all.extend(prob1.tolist()); val_preds_all.extend(pred.cpu().tolist())
 
-ret_val = exit_closes/np.maximum(entry_opens,1e-12)-1.0
+ret_val = (exit_closes * (1.0 - EXIT_FEE)) / (np.maximum(entry_opens,1e-12) * (1.0 + ENTRY_FEE)) - 1.0
 # ensure numpy array for threshold masking
 val_probs_all_np = np.asarray(val_probs_all, dtype=np.float32)
 thr_min,thr_max,thr_step=0.15,0.99,0.0025
