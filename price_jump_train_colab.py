@@ -1,10 +1,11 @@
 # price_jump_train_colab.py
-# Last modified (MSK): 2025-08-27 11:12
+# Last modified (MSK): 2025-08-29 14:43 — правка номер 1
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
 # - Legend placed below with increased figure height; restore plot proportions
 # - Implement lateral anti-overlap for value rectangles at same x; base anchoring kept
+# - Add maker/taker commission constants and switch; compute net returns across curves & threshold
 """Обучает LSTM, метка = 1 если
    • максимум Close за следующие 5 мин ≥ Open + 0.35%
  Сохраняет модель и StandardScaler в lstm_jump.pt
@@ -19,6 +20,13 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FuncFormatter
 from matplotlib.offsetbox import AnnotationBbox, TextArea
 import time
+
+# Commissions (maker/taker) — net PnL calculations
+MAKER_FEE = 0.0002
+TAKER_FEE = 0.0005
+USE_MAKER_FEES = False
+ENTRY_FEE = MAKER_FEE if USE_MAKER_FEES else TAKER_FEE
+EXIT_FEE  = MAKER_FEE if USE_MAKER_FEES else TAKER_FEE
 
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035  # 30-мин история, окно 5 мин
 
@@ -156,7 +164,7 @@ val_indices = np.asarray(val_ds.indices, dtype=np.int64)
 entry_idx = val_indices + SEQ_LEN
 entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
-ret_per_trade_val_fixed = exit_closes / np.maximum(entry_opens, MIN_DENOM_EPS) - 1.0
+ret_per_trade_val_fixed = (exit_closes * (1.0 - EXIT_FEE)) / (np.maximum(entry_opens, MIN_DENOM_EPS) * (1.0 + ENTRY_FEE)) - 1.0
 
 # Optional overrides from meta/hyper
 DROPOUT_P = DEFAULT_DROPOUT
@@ -413,7 +421,7 @@ val_indices = np.asarray(val_ds.indices, dtype=np.int64)
 entry_idx = val_indices + SEQ_LEN
 entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
-ret_per_trade_val = exit_closes / np.maximum(entry_opens, MIN_DENOM_EPS) - 1.0
+ret_per_trade_val = (exit_closes * (1.0 - EXIT_FEE)) / (np.maximum(entry_opens, MIN_DENOM_EPS) * (1.0 + ENTRY_FEE)) - 1.0
 # lows for intra-trade drawdown computations
 lows_all = df["l"].astype(np.float32).values
 
