@@ -594,6 +594,8 @@ for t in thresholds:
         run_max = np.maximum.accumulate(equity)
         dd = np.min(equity / (run_max + 1e-12) - 1.0) if equity.size>0 else 0.0
         mddp = float(abs(dd) * 100.0)
+        if comp>best_comp:
+            best_comp=comp; best_thr=float(t); best_trades=n
     # new metrics per threshold
     def _max_intratrade_dd_pct_for_mask(mask: np.ndarray) -> float:
         if not np.any(mask): return 0.0
@@ -703,7 +705,7 @@ try:
                 exit_idx = int(e_i + max(PNL_VAS_MAX_HOLD_MIN, PRED_WINDOW))
                 if exit_idx >= len(ds.closes):
                     exit_idx = len(ds.closes) - 1
-            r_i = float(ds.closes[exit_idx] / entry_open - 1.0)
+            r_i = float((ds.closes[exit_idx] * (1.0 - EXIT_FEE)) / (entry_open * (1.0 + ENTRY_FEE)) - 1.0)
             equity *= (1.0 + r_i)
             last_exit = exit_idx
         return float((equity - 1.0) * 100.0)
@@ -722,6 +724,13 @@ try:
     # compute pnl_vas across thresholds using selected stop-loss
     pnl_vas_list = [ _pnl_vas_pct_for_mask((val_probs_all_np >= t), best_sl) for t in thr_arr ]
     pnl_vas_arr = np.asarray(pnl_vas_list)
+
+    # banner with selected stop loss for pnl_vas (net)
+    try:
+        fig.text(0.5, 0.995, f"pnl_vas: выбранный stop_loss = {best_sl*100:.2f}% (thr={PNL_VAS_SWEEP_THR:.2f})",
+                 ha='center', va='top', fontsize=10)
+    except Exception:
+        pass
 
     def _norm(a):
         a = np.asarray(a, dtype=np.float64)
