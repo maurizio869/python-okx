@@ -1,10 +1,11 @@
 # price_jump_train_colab_FINDERandOneCycleLR.py
-# Last modified (MSK): 2025-08-27 11:12
+# Last modified (MSK): 2025-08-29 14:43 — правка номер 1
 # Changes:
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
 # - Add Trades to legend; place legend below; restore plot proportions
 # - Implement lateral anti-overlap for value rectangles at same x
+# - Add maker/taker commission constants and switch; compute net returns across curves & threshold
 """Тренировка LSTM: LR Finder + OneCycleLR вместо ReduceLROnPlateau.
 - 1-я стадия: короткий LR finder на подмножестве данных/эпохах
 - 2-я стадия: основное обучение с OneCycleLR
@@ -37,6 +38,13 @@ except Exception:
     pass
 
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035
+# Commissions (maker/taker) — net PnL calculations
+MAKER_FEE = 0.0002
+TAKER_FEE = 0.0005
+USE_MAKER_FEES = False
+ENTRY_FEE = MAKER_FEE if USE_MAKER_FEES else TAKER_FEE
+EXIT_FEE  = MAKER_FEE if USE_MAKER_FEES else TAKER_FEE
+
 TRAIN_JSON = Path("candles_10d.json")
 MODEL_PATH = Path("lstm_jump_PRAUC.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
@@ -250,7 +258,7 @@ val_indices = np.asarray(val_ds.indices, dtype=np.int64)
 entry_idx = val_indices + SEQ_LEN
 entry_opens = ds.opens[entry_idx]
 exit_closes = ds.closes[entry_idx + PRED_WINDOW]
-ret_val_fixed = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0
+ret_val_fixed = (exit_closes * (1.0 - EXIT_FEE)) / (np.maximum(entry_opens, 1e-12) * (1.0 + ENTRY_FEE)) - 1.0
 
 # Threshold sweep defaults for in-epoch PnL selection
 thr_min, thr_max, thr_step = 0.15, 0.85, 0.0025
@@ -383,7 +391,7 @@ with torch.no_grad():
         pred=(prob1>=0.5).to(torch.long); y_cpu=yb.to(torch.long)
         val_targets_all.extend(y_cpu.tolist()); val_probs_all.extend(prob1.tolist()); val_preds_all.extend(pred.cpu().tolist())
 
-ret_val = exit_closes/np.maximum(entry_opens,1e-12)-1.0
+ret_val = (exit_closes * (1.0 - EXIT_FEE)) / (np.maximum(entry_opens,1e-12) * (1.0 + ENTRY_FEE)) - 1.0
 thr_min,thr_max,thr_step=0.15,0.85,0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
 thresholds=np.arange(thr_min,thr_max+1e-12,thr_step)
