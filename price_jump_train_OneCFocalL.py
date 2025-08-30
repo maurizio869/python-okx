@@ -1,6 +1,7 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-30 12:00 — правка номер 5
+# Last modified (MSK): 2025-08-30 12:08 — правка номер 6
 # Changes:
+# - Updated AUTOTUNE_WD_MULT from 1.4 to 1.0
 # - Fixed missing avgdd_arr conversion from avgdd_seq_list for threshold plot
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
@@ -87,7 +88,7 @@ FOCAL_GAMMA = 1.5
 # Autotune parameters (triggered once when PR_AUC crosses threshold)
 AUTOTUNE_PRAUC_THRESHOLD = 0.601
 AUTOTUNE_GAMMA = 1.6
-AUTOTUNE_WD_MULT = 1.4
+AUTOTUNE_WD_MULT = 1.0
 AUTOTUNE_BETA1 = 0.8
 AUTOTUNE_APPLY_BETA = True
 
