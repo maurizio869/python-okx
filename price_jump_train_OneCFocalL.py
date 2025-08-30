@@ -1,6 +1,8 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-30 13:13 — правка номер 7
+# Last modified (MSK): 2025-08-30 19:32 — правка номер 8
 # Changes:
+# - Updated DEFAULT_DROPOUT from 0.37 to 0.35
+# - Updated AUTOTUNE_GAMMA from 1.6 to 1.4
 # - Removed fees from PnL calculation in training epochs and curves plot (ret_val_fixed_no_fee)
 # - Kept fees in threshold sweep and threshold plot metrics (ret_val with fees)
 # - Updated AUTOTUNE_WD_MULT from 1.4 to 1.0
@@ -66,7 +68,7 @@ ONECYCLE_PCT_START = 0.12
 ONECYCLE_DIV_FACTOR = 2.0
 ONECYCLE_FINAL_DIV_FACTOR = 7.5
 WEIGHT_DECAY = 4.5e-5
-DEFAULT_DROPOUT = 0.37
+DEFAULT_DROPOUT = 0.35
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EARLY_STOP_EPOCHS = 80
 NPR_EPS = 1e-12
@@ -89,7 +91,7 @@ FOCAL_GAMMA = 1.5
 
 # Autotune parameters (triggered once when PR_AUC crosses threshold)
 AUTOTUNE_PRAUC_THRESHOLD = 0.601
-AUTOTUNE_GAMMA = 1.6
+AUTOTUNE_GAMMA = 1.4
 AUTOTUNE_WD_MULT = 1.0
 AUTOTUNE_BETA1 = 0.8
 AUTOTUNE_APPLY_BETA = True
