@@ -1,55 +1,44 @@
-# 🐍 Python OKX Trading & Android Sound Scripts
+# 📈 Python OKX Trading Scripts
 
-Репозиторий содержит различные Python скрипты для работы с криптовалютами и звуком на Android.
+Набор Python скриптов для анализа и предсказания движений цен на криптовалютной бирже OKX.
 
-## 📁 Структура проекта
+## 🧠 Основные компоненты
 
-### 📈 Торговые скрипты (OKX Trading)
-Скрипты для анализа и предсказания движений цен на криптовалютной бирже OKX:
-
-- `price_jump_train_OneCFocalL.py` - Тренировка LSTM модели для предсказания скачков цен
+### LSTM модели для предсказания скачков цен:
+- `price_jump_train_OneCFocalL.py` - Основной скрипт тренировки LSTM модели
 - `price_jump_eval_colab.py` - Оценка производительности модели
-- `price_jump_visualize.py` - Визуализация результатов
+- `price_jump_visualize.py` - Визуализация результатов предсказаний
+
+### Вспомогательные скрипты:
 - `lstm_jump_dropout_p_find.py` - Поиск оптимальных параметров dropout
-- Другие вспомогательные скрипты
+- `price_jump_max_lr_finder_plot.py` - Поиск оптимальной скорости обучения
+- `price_jump_train_colab.py` - Версия для Google Colab
+- `price_jump_train_colab_FOCAL_LOSS.py` - Версия с Focal Loss
+- `price_jump_train_colab_FINDERandOneCycleLR.py` - Версия с OneCycleLR
 
-### 🔊 Android Sound Scripts
-**📂 Папка: [`android-sound-scripts/`](./android-sound-scripts/)**
+### Устаревшие версии:
+- `OLD_price_jump_train_OneCFocalL.py` - Старая версия основного скрипта
 
-Набор Python скриптов для воспроизведения звуков на Android устройствах через IDE типа Pydroid:
+## 🚀 Использование
 
-- `quick_start.py` - Быстрый тест звука
-- `android_sound_player.py` - Полнофункциональный плеер
-- `advanced_sound_generator.py` - Продвинутый генератор звуков
-- `audio_file_player.py` - Работа с аудиофайлами
-- `requirements.txt` - Зависимости
-- `README.md` - Подробная документация
-
-## 🚀 Быстрый старт
-
-### Для звуковых скриптов на Android:
 ```bash
-cd android-sound-scripts/
-pip install pygame numpy
-python quick_start.py
-```
+# Установка зависимостей
+pip install torch pandas numpy matplotlib scikit-learn
 
-### Для торговых скриптов:
-```bash
-# Установите зависимости для машинного обучения
-pip install torch pandas numpy matplotlib
+# Запуск тренировки модели
 python price_jump_train_OneCFocalL.py
+
+# Оценка модели
+python price_jump_eval_colab.py
+
+# Визуализация результатов
+python price_jump_visualize.py
 ```
 
-## 📖 Документация
+## 🎯 Цель проекта
 
-- **Звуковые скрипты:** См. [`android-sound-scripts/README.md`](./android-sound-scripts/README.md)
-- **Торговые скрипты:** Документация в комментариях к файлам
-
-## 🤝 Вклад
-
-Репозиторий содержит независимые проекты. Каждая папка имеет свои зависимости и документацию.
+Создание и обучение LSTM нейронной сети для предсказания значительных движений цен (price jumps) на криптовалютном рынке с использованием данных с биржи OKX.
 
 ---
 
-*Создано с помощью Python для различных задач автоматизации и анализа* 🐍
+*Проект использует машинное обучение для анализа финансовых данных* 🤖💰
