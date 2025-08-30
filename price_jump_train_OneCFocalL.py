@@ -1,6 +1,7 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-29 20:07 — правка номер 4
+# Last modified (MSK): 2025-08-30 12:00 — правка номер 5
 # Changes:
+# - Fixed missing avgdd_arr conversion from avgdd_seq_list for threshold plot
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
 # - Extend max CompRet annotation with new metrics (real values)
 # - Move threshold constants block outside axes on the right; legend stays bottom
@@ -662,6 +663,7 @@ try:
                 last_exit = int(e_i + PRED_WINDOW)
         return float(np.mean(dd_vals) * 100.0) if len(dd_vals) > 0 else 0.0
     avgdd_seq_list = [ _avg_price_dd_seq_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
+    avgdd_arr = np.asarray(avgdd_seq_list)
     # pnl_vas (seq) per threshold with dynamic exit rules
     def _pnl_vas_pct_for_mask(mask: np.ndarray, stop_loss_pct: float) -> float:
         if not np.any(mask):
