@@ -1,6 +1,8 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-30 12:08 — правка номер 6
+# Last modified (MSK): 2025-08-30 13:13 — правка номер 7
 # Changes:
+# - Removed fees from PnL calculation in training epochs and curves plot (ret_val_fixed_no_fee)
+# - Kept fees in threshold sweep and threshold plot metrics (ret_val with fees)
 # - Updated AUTOTUNE_WD_MULT from 1.4 to 1.0
 # - Fixed missing avgdd_arr conversion from avgdd_seq_list for threshold plot
 # - Add Max IntraTrade DD (price, %) and PnL (seq, %) metrics on threshold
@@ -304,6 +306,7 @@ val_indices = np.asarray(val_ds.indices, dtype=np.int64)
 entry_idx = val_indices + SEQ_LEN
 entry_opens = ds.opens[entry_idx]; exit_closes = ds.closes[entry_idx + PRED_WINDOW]
 ret_val_fixed = (exit_closes * (1.0 - EXIT_FEE)) / (np.maximum(entry_opens, 1e-12) * (1.0 + ENTRY_FEE)) - 1.0
+ret_val_fixed_no_fee = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0  # без комиссий для эпох и curves
 thr_min, thr_max, thr_step = 0.15, 0.99, 0.0025
 last_best_thr = 0.565
 
@@ -371,7 +374,7 @@ for e in range(1, EPOCHS+1):
             if n==0:
                 comp=-np.inf; sret=0.0
             else:
-                r=ret_val_fixed[m]
+                r=ret_val_fixed_no_fee[m]
                 comp=-1.0 if np.any(r<=-0.999999) else float(np.exp(np.sum(np.log1p(r)))-1.0)
                 sret=float(np.sum(r))
             # update best inside the loop
@@ -383,7 +386,7 @@ for e in range(1, EPOCHS+1):
         pnl_best_sum = best_sum
     else:
         m=(val_probs_np>=last_best_thr); trades_best=int(m.sum())
-        pnl_best_sum = float(np.sum(ret_val_fixed[m])) if trades_best>0 else 0.0
+        pnl_best_sum = float(np.sum(ret_val_fixed_no_fee[m])) if trades_best>0 else 0.0
 
     curr_lr = opt.param_groups[0]['lr']
     val_acc = (corr/tot_s) if tot_s>0 else 0.0
