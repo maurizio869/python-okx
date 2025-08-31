@@ -1,9 +1,10 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 20:27 — правка номер 8
+# Last modified (MSK): 2025-08-31 20:52 — правка номер 9
 # Changes:
-# - Added avg_equity_dd curve to threshold sweep graph with its own annotations
-# - Added avg_equity_dd_best to max comp_ret annotation (replaced unused variable)
-# - Restored _avg_equity_dd_pct_for_mask function for computing equity DD
+# - Changed all PnL calculations to SHORT logic (entry/exit reversed)
+# - Changed intra-trade DD to use max_high instead of min_low (SHORT positions)
+# - Updated _pnl_vas_pct_for_mask for SHORT: stop-loss on highs, exit on price drop
+# - All metrics now correctly reflect SHORT trading (selling instead of buying)
 # - Fixed annotations to match graph curves: avg_price_dd annotations now show price DD values
 # - Renamed all drawdown variables for clarity:
 #   * mdd -> max_equity_dd (equity curve drawdown)
@@ -310,8 +311,9 @@ except Exception as ex:
 val_indices = np.asarray(val_ds.indices, dtype=np.int64)
 entry_idx = val_indices + SEQ_LEN
 entry_opens = ds.opens[entry_idx]; exit_closes = ds.closes[entry_idx + PRED_WINDOW]
-ret_val_fixed = (exit_closes * (1.0 - EXIT_FEE)) / (np.maximum(entry_opens, 1e-12) * (1.0 + ENTRY_FEE)) - 1.0
-ret_val_fixed_no_fee = exit_closes / np.maximum(entry_opens, 1e-12) - 1.0  # без комиссий для эпох и curves
+# SHORT логика: доход = (цена_входа - цена_выхода) / цена_входа
+ret_val_fixed = (entry_opens * (1.0 - EXIT_FEE)) / (np.maximum(exit_closes, 1e-12) * (1.0 + ENTRY_FEE)) - 1.0
+ret_val_fixed_no_fee = entry_opens / np.maximum(exit_closes, 1e-12) - 1.0  # без комиссий для эпох и curves
 thr_min, thr_max, thr_step = 0.15, 0.99, 0.0025
 last_best_thr = 0.565
 
@@ -568,7 +570,8 @@ with torch.no_grad():
         pred=(prob1>=0.5).to(torch.long); y_cpu=yb.to(torch.long)
         val_targets_all.extend(y_cpu.tolist()); val_probs_all.extend(prob1.tolist()); val_preds_all.extend(pred.cpu().tolist())
 
-ret_val = (exit_closes * (1.0 - EXIT_FEE)) / (np.maximum(entry_opens,1e-12) * (1.0 + ENTRY_FEE)) - 1.0
+# SHORT логика для перебора порогов (с комиссиями)
+ret_val = (entry_opens * (1.0 - EXIT_FEE)) / (np.maximum(exit_closes,1e-12) * (1.0 + ENTRY_FEE)) - 1.0
 # ensure numpy array for threshold masking
 val_probs_all_np = np.asarray(val_probs_all, dtype=np.float32)
 thr_min,thr_max,thr_step=0.15,0.99,0.0025
@@ -608,20 +611,22 @@ for t in thresholds:
             best_comp=comp; best_thr=float(t); best_trades=n
     # new metrics per threshold
     def _max_price_dd_pct_for_mask(mask: np.ndarray) -> float:
+        # SHORT: просадка когда цена растет (используем max_high)
         if not np.any(mask): return 0.0
         ent_ = entry_idx[mask]
-        dd_min = 0.0; has_any=False
+        dd_max = 0.0; has_any=False
         for k in ent_:
             end = int(k + PRED_WINDOW)
-            if end >= len(ds.lows):
+            if end >= len(ds.highs):
                 continue
-            min_low = float(np.min(ds.lows[k:end+1]))
+            max_high = float(np.max(ds.highs[k:end+1]))
             entry_open = float(ds.opens[int(k)]) if int(k) < len(ds.opens) else float('nan')
             if not np.isfinite(entry_open) or entry_open <= 0: continue
-            dd_i = (min_low / max(entry_open, 1e-12)) - 1.0
-            if not has_any: dd_min = dd_i; has_any=True
-            else: dd_min = min(dd_min, dd_i)
-        return float(abs(dd_min) * 100.0) if has_any else 0.0
+            # SHORT: убыток когда цена растет выше entry_open
+            dd_i = (max_high / max(entry_open, 1e-12)) - 1.0
+            if not has_any: dd_max = dd_i; has_any=True
+            else: dd_max = max(dd_max, dd_i)
+        return float(dd_max * 100.0) if has_any else 0.0
     def _pnl_seq_pct_for_mask(mask: np.ndarray) -> float:
         if not np.any(mask): return 0.0
         ent_ = entry_idx[mask]
@@ -653,6 +658,7 @@ try:
     pnlseq_arr = np.asarray(pnl_seq_list)
     # avg_price_dd (seq, price) per threshold using sequential non-overlapping trades
     def _avg_price_dd_seq_pct_for_mask(mask: np.ndarray) -> float:
+        # SHORT: средняя просадка когда цена растет
         if not np.any(mask):
             return 0.0
         ent = entry_idx[mask]
@@ -663,12 +669,13 @@ try:
         for e_i in ent_sorted:
             if e_i >= last_exit:
                 end = int(e_i + PRED_WINDOW)
-                if end < len(ds.lows):
-                    min_low = float(np.min(ds.lows[e_i:end+1]))
+                if end < len(ds.highs):
+                    max_high = float(np.max(ds.highs[e_i:end+1]))
                     entry_open = float(ds.opens[int(e_i)]) if int(e_i) < len(ds.opens) else float('nan')
                     if np.isfinite(entry_open) and entry_open > 0:
-                        dd_i = (min_low / max(entry_open, 1e-12)) - 1.0
-                        dd_vals.append(abs(dd_i))
+                        # SHORT: убыток когда цена растет
+                        dd_i = (max_high / max(entry_open, 1e-12)) - 1.0
+                        dd_vals.append(dd_i)  # Не берем abs, так как dd_i уже положительный
                 last_exit = int(e_i + PRED_WINDOW)
         return float(np.mean(dd_vals) * 100.0) if len(dd_vals) > 0 else 0.0
     avg_price_dd_list = [ _avg_price_dd_seq_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
@@ -713,9 +720,9 @@ try:
                 j = int(e_i + k)
                 if j >= len(ds.opens):
                     break
-                # stop-loss check (intra-minute via lows)
-                low_j = float(ds.lows[j])
-                if (low_j / entry_open - 1.0) <= stop_loss_pct:
+                # SHORT: stop-loss когда цена растет (используем highs)
+                high_j = float(ds.highs[j])
+                if (high_j / entry_open - 1.0) >= abs(stop_loss_pct):
                     exit_idx = j
                     break
                 # dynamic exit condition
@@ -726,15 +733,18 @@ try:
                 body_current = (close_j - open_j)
                 body_prev = (close_prev - open_prev)
                 body_smaller = (body_current < body_prev)
-                price_up_enough = ((close_j / entry_open - 1.0) >= PNL_VAS_THRESH_PCT)
-                if body_smaller and prev_green and price_up_enough:
+                # SHORT: выход когда цена упала достаточно
+                price_down_enough = ((entry_open / close_j - 1.0) >= PNL_VAS_THRESH_PCT)
+                # SHORT: выход на красной свече после падения
+                if body_smaller and not prev_green and price_down_enough:
                     exit_idx = j
                     break
             if exit_idx is None:
                 exit_idx = int(e_i + max(PNL_VAS_MAX_HOLD_MIN, PRED_WINDOW))
                 if exit_idx >= len(ds.closes):
                     exit_idx = len(ds.closes) - 1
-            r_i = float((ds.closes[exit_idx] * (1.0 - EXIT_FEE)) / (entry_open * (1.0 + ENTRY_FEE)) - 1.0)
+            # SHORT логика для доходности
+            r_i = float((entry_open * (1.0 - EXIT_FEE)) / (ds.closes[exit_idx] * (1.0 + ENTRY_FEE)) - 1.0)
             equity *= (1.0 + r_i)
             last_exit = exit_idx
         return float((equity - 1.0) * 100.0)
