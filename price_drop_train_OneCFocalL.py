@@ -1,6 +1,7 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 18:55 — правка номер 4
+# Last modified (MSK): 2025-08-31 19:38 — правка номер 5
 # Changes:
+# - Fixed annotations to match graph curves: avg_price_dd annotations now show price DD values
 # - Renamed all drawdown variables for clarity:
 #   * mdd -> max_equity_dd (equity curve drawdown)
 #   * avg_dd -> avg_equity_dd (for equity) and avg_price_dd (for price)
@@ -815,7 +816,7 @@ try:
             (max_equity_dd_n,  max_equity_dd_arr,  l5.get_color(), False),
             (max_price_dd_n, max_price_dd_arr, l8.get_color(), False),
             (pnlseq_n, pnlseq_arr, l9.get_color(), False),
-            (avg_price_dd_n, avg_price_dd_arr, l10.get_color(), False),
+            (avg_price_dd_n, avg_price_dd_arr, l10.get_color(), True),
             (pnlvas_n, pnl_vas_arr, l11.get_color(), False),
         ]
         y_tol = 0.02
@@ -838,8 +839,8 @@ try:
                 text = f"{rv:.2f}"
                 if with_avg:
                     mask_here = (val_probs_all_np >= t_mod)
-                    avg_equity_dd = _avg_equity_dd_for_mask(mask_here)
-                    text = f"{rv:.2f}\navg_equity_dd={avg_equity_dd:.2f}%"
+                    avg_price_dd_val = _avg_price_dd_seq_pct_for_mask(mask_here)
+                    text = f"{rv:.2f}\navg_price_dd={avg_price_dd_val:.2f}%"
                 items.append((yv, text, col, idx))
             buckets = {}
             for (yv, text, col, idx) in items:
