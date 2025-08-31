@@ -1,6 +1,7 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 19:50 — правка номер 13
+# Last modified (MSK): 2025-08-31 19:54 — правка номер 14
 # Changes:
+# - Fixed legend labels on threshold sweep graph to match renamed DD variables
 # - Fixed max comp_ret annotation to use correct variable names (max_price_dd_best, avg_price_dd_best)
 # - Fixed annotations to match graph curves: avg_price_dd annotations now show price DD values
 # - Renamed all drawdown variables for clarity:
@@ -763,15 +764,15 @@ try:
     l2, = ax1.plot(thr_arr, pnl_n,  label='pnl_sum (norm)',  color='#ff7f0e', linewidth=1.8)
     l3, = ax1.plot(thr_arr, mean_n, label='mean_ret (norm)', color='#000000', linestyle='--', linewidth=1.6)
     l4, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color='#7f7f7f', linestyle='--', linewidth=1.6)
-    l5, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color='#2ca02c', linestyle='-', linewidth=1.6)
+    l5, = ax1.plot(thr_arr, max_equity_dd_n,  label='max_equity_dd (norm)', color='#2ca02c', linestyle='-', linewidth=1.6)
     l6, = ax2.plot(thr_arr, shp_arr, label='Sharpe', color='#9467bd', alpha=0.9)
     # add Trades on separate invisible y-axis
     ax3 = ax1.twinx(); ax3.get_yaxis().set_visible(False)
     l7, = ax3.plot(thr_arr, np.asarray(trades_list), label='Trades', color='#8c564b')
     # new metrics on left axis
-    l8, = ax1.plot(thr_arr, intradd_n, label='Max IntraTrade DD (price, %)', color='#98df8a', linewidth=1.6)
+    l8, = ax1.plot(thr_arr, max_price_dd_n, label='max_price_dd (%)', color='#98df8a', linewidth=1.6)
     l9, = ax1.plot(thr_arr, pnlseq_n, label='PnL (seq, %)', color='#d62728', linewidth=1.6)
-    l10, = ax1.plot(thr_arr, avgdd_n, label='avg_dd (%)', color='#17becf', linewidth=1.6)
+    l10, = ax1.plot(thr_arr, avg_price_dd_n, label='avg_price_dd (%)', color='#17becf', linewidth=1.6)
     l11, = ax1.plot(thr_arr, pnlvas_n, label='PnL (vas, %)', color='#bcbd22', linewidth=1.6)
     # placeholder for pnl_vas; will compute below
 
