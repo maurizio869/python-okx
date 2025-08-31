@@ -1,6 +1,7 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 19:54 — правка номер 14
+# Last modified (MSK): 2025-08-31 19:58 — правка номер 15
 # Changes:
+# - Completed renaming of ALL drawdown variables throughout the script (mdd->max_equity_dd, avgdd->avg_price_dd, intradd->max_price_dd)
 # - Fixed legend labels on threshold sweep graph to match renamed DD variables
 # - Fixed max comp_ret annotation to use correct variable names (max_price_dd_best, avg_price_dd_best)
 # - Fixed annotations to match graph curves: avg_price_dd annotations now show price DD values
@@ -24,7 +25,7 @@
 # - Extend max CompRet annotation with new metrics (real values)
 # - Move threshold constants block outside axes on the right; legend stays bottom
 # - Increase threshold figure height and bottom padding to preserve plot proportions
-# - Fix threshold bug: use NumPy array for val_probs_all comparisons (masks, avg_dd, mask_best)
+# - Fix threshold bug: use NumPy array for val_probs_all comparisons (masks, avg_price_dd, mask_best)
 # - Params: BEST_LR_MULTIPLIER=2.0; ONECYCLE_FINAL_DIV_FACTOR=7.5; WEIGHT_DECAY=4.5e-5; EPOCHS=400; add 2 new features (upper_wick/body, lower_wick/body) and set input_size=7
 # - Rename pnl_ddd -> pnl_vas across threshold plot and annotations
 """OneCycle LSTM training with Focal Loss.
@@ -586,9 +587,9 @@ thr_min,thr_max,thr_step=0.15,0.99,0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
 
 thresholds=np.arange(thr_min,thr_max+1e-12,thr_step)
-thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]; trades_list=[]; mean_ret_list=[]; median_ret_list=[]; mdd_list=[]
+thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]; trades_list=[]; mean_ret_list=[]; median_ret_list=[]; max_equity_dd_list=[]
 
-max_intra_dd_list=[]; pnl_seq_list=[]
+max_price_dd_list=[]; pnl_seq_list=[]
 
 def _safe_sharpe_arr(r: np.ndarray) -> float:
     if r.size < 2: return 0.0
@@ -614,11 +615,11 @@ for t in thresholds:
         equity = np.cumprod(1.0 + r_sorted.astype(np.float64))
         run_max = np.maximum.accumulate(equity)
         dd = np.min(equity / (run_max + 1e-12) - 1.0) if equity.size>0 else 0.0
-        mddp = float(abs(dd) * 100.0)
+        max_equity_dd_pct = float(abs(dd) * 100.0)
         if comp>best_comp:
             best_comp=comp; best_thr=float(t); best_trades=n
     # new metrics per threshold
-    def _max_intratrade_dd_pct_for_mask(mask: np.ndarray) -> float:
+    def _max_price_dd_pct_for_mask(mask: np.ndarray) -> float:
         if not np.any(mask): return 0.0
         ent_ = entry_idx[mask]
         dd_min = 0.0; has_any=False
@@ -645,9 +646,9 @@ for t in thresholds:
                 equity *= (1.0 + float(r_i))
                 last_exit = int(e_i + PRED_WINDOW)
         return float((equity - 1.0) * 100.0)
-    max_intra_dd_list.append(_max_intratrade_dd_pct_for_mask(m))
+    max_price_dd_list.append(_max_price_dd_pct_for_mask(m))
     pnl_seq_list.append(_pnl_seq_pct_for_mask(m))
-    thr_list.append(float(t)); pnl_list.append(sret*100.0); comp_list.append(comp*100.0 if np.isfinite(comp) else np.nan); sharpe_list.append(shp); trades_list.append(n); mean_ret_list.append(meanp); median_ret_list.append(medp); mdd_list.append(mddp)
+    thr_list.append(float(t)); pnl_list.append(sret*100.0); comp_list.append(comp*100.0 if np.isfinite(comp) else np.nan); sharpe_list.append(shp); trades_list.append(n); mean_ret_list.append(meanp); median_ret_list.append(medp); max_equity_dd_list.append(max_equity_dd_pct)
 print(f"Выбран порог по PnL (валидация): {best_thr:.4f}, comp_ret={best_comp*100 if np.isfinite(best_comp) else float('nan'):.2f}% trades={best_trades}")
 
 try:
@@ -659,10 +660,10 @@ try:
     shp_arr = np.asarray(sharpe_list)
     mean_arr = np.asarray(mean_ret_list)
     med_arr  = np.asarray(median_ret_list)
-    mdd_arr  = np.asarray(mdd_list)
-    intradd_arr = np.asarray(max_intra_dd_list)
+    max_equity_dd_arr  = np.asarray(max_equity_dd_list)
+    max_price_dd_arr = np.asarray(max_price_dd_list)
     pnlseq_arr = np.asarray(pnl_seq_list)
-    # avg_dd (seq, price) per threshold using sequential non-overlapping trades
+    # avg_price_dd (seq, price) per threshold using sequential non-overlapping trades
     def _avg_price_dd_seq_pct_for_mask(mask: np.ndarray) -> float:
         if not np.any(mask):
             return 0.0
@@ -682,8 +683,8 @@ try:
                         dd_vals.append(abs(dd_i))
                 last_exit = int(e_i + PRED_WINDOW)
         return float(np.mean(dd_vals) * 100.0) if len(dd_vals) > 0 else 0.0
-    avgdd_seq_list = [ _avg_price_dd_seq_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
-    avgdd_arr = np.asarray(avgdd_seq_list)
+    avg_price_dd_list = [ _avg_price_dd_seq_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
+    avg_price_dd_arr = np.asarray(avg_price_dd_list)
     # pnl_vas (seq) per threshold with dynamic exit rules
     def _pnl_vas_pct_for_mask(mask: np.ndarray, stop_loss_pct: float) -> float:
         if not np.any(mask):
@@ -811,7 +812,7 @@ try:
         thr_min_v = float(thr_min); thr_max_v = float(thr_max)
         delta = thr_max_v - thr_min_v
         t_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
-        def _avg_dd_for_mask(mask):
+        def _avg_equity_dd_for_mask(mask):
             ent = entry_idx[mask]
             order = np.argsort(ent)
             r_sorted = ret_val[mask][order] if np.any(mask) else np.array([], dtype=np.float64)
@@ -923,7 +924,7 @@ try:
             run_max_b = np.maximum.accumulate(equity_best)
             dd_series = equity_best / (run_max_b + 1e-12) - 1.0
             max_equity_dd_best = float(abs(np.min(dd_series)) * 100.0)
-            _avg_dd_equity_unused = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
+            avg_equity_dd_unused = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
         else:
             max_equity_dd_best = 0.0; avg_equity_dd_unused = 0.0
         max_price_dd_best = _max_price_dd_pct_for_mask(mask_best)

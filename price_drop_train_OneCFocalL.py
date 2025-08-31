@@ -1,6 +1,7 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 19:38 — правка номер 5
+# Last modified (MSK): 2025-08-31 19:58 — правка номер 6
 # Changes:
+# - Fixed comment: avg_dd -> avg_price_dd for consistency
 # - Fixed annotations to match graph curves: avg_price_dd annotations now show price DD values
 # - Renamed all drawdown variables for clarity:
 #   * mdd -> max_equity_dd (equity curve drawdown)
@@ -648,7 +649,7 @@ try:
     max_equity_dd_arr  = np.asarray(max_equity_dd_list)
     max_price_dd_arr = np.asarray(max_price_dd_list)
     pnlseq_arr = np.asarray(pnl_seq_list)
-    # avg_dd (seq, price) per threshold using sequential non-overlapping trades
+    # avg_price_dd (seq, price) per threshold using sequential non-overlapping trades
     def _avg_price_dd_seq_pct_for_mask(mask: np.ndarray) -> float:
         if not np.any(mask):
             return 0.0
