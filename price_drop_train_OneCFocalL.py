@@ -817,7 +817,7 @@ try:
             (max_equity_dd_n,  max_equity_dd_arr,  l5.get_color(), False),
             (max_price_dd_n, max_price_dd_arr, l8.get_color(), False),
             (pnlseq_n, pnlseq_arr, l9.get_color(), False),
-            (avg_price_dd_n, avg_price_dd_arr, l10.get_color(), True),
+            (avg_price_dd_n, avg_price_dd_arr, l10.get_color(), False),
             (pnlvas_n, pnl_vas_arr, l11.get_color(), False),
         ]
         y_tol = 0.02

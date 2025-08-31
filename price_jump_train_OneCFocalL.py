@@ -1,6 +1,7 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 19:58 — правка номер 15
+# Last modified (MSK): 2025-08-31 20:09 — правка номер 16
 # Changes:
+# - Disabled extra annotation info for avg_price_dd (with_avg=False) in threshold sweep
 # - Completed renaming of ALL drawdown variables throughout the script (mdd->max_equity_dd, avgdd->avg_price_dd, intradd->max_price_dd)
 # - Fixed legend labels on threshold sweep graph to match renamed DD variables
 # - Fixed max comp_ret annotation to use correct variable names (max_price_dd_best, avg_price_dd_best)
@@ -831,7 +832,7 @@ try:
             (max_equity_dd_n,  max_equity_dd_arr,  l5.get_color(), False),
             (max_price_dd_n, max_price_dd_arr, l8.get_color(), False),
             (pnlseq_n, pnlseq_arr, l9.get_color(), False),
-            (avg_price_dd_n, avg_price_dd_arr, l10.get_color(), True),
+            (avg_price_dd_n, avg_price_dd_arr, l10.get_color(), False),
             (pnlvas_n, pnl_vas_arr, l11.get_color(), False),
         ]
         y_tol = 0.02
