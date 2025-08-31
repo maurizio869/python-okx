@@ -1,6 +1,11 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 16:40 — правка номер 10
+# Last modified (MSK): 2025-08-31 18:55 — правка номер 11
 # Changes:
+# - Renamed all drawdown variables for clarity:
+#   * mdd -> max_equity_dd (equity curve drawdown)
+#   * avg_dd -> avg_equity_dd (for equity) and avg_price_dd (for price)
+#   * intradd -> max_price_dd (price movement within trades)
+# - Updated graph labels and annotations to use new names
 # - Added class imbalance output: shows percentage of class 1 samples
 # - Updated BEST_LR_MULTIPLIER from 2.4 to 2.8
 # - Updated ONECYCLE_DIV_FACTOR from 2.0 to 20.0
@@ -749,7 +754,7 @@ try:
     def _norm(a):
         a = np.asarray(a, dtype=np.float64)
         return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a) + 1e-12) if a.size>0 else a
-    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr); intradd_n = _norm(intradd_arr); pnlseq_n = _norm(pnlseq_arr); avgdd_n = _norm(avgdd_arr); pnlvas_n = _norm(pnl_vas_arr)
+    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); max_equity_dd_n = _norm(max_equity_dd_arr); max_price_dd_n = _norm(max_price_dd_arr); pnlseq_n = _norm(pnlseq_arr); avg_price_dd_n = _norm(avg_price_dd_arr); pnlvas_n = _norm(pnl_vas_arr)
 
     # styles: mean black dashed, median gray dashed; others distinct
     l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color='#1f77b4', linewidth=1.8)
@@ -819,10 +824,10 @@ try:
             (pnl_n,  pnl_arr,  l2.get_color(), False),
             (mean_n, mean_arr, l3.get_color(), False),
             (med_n,  med_arr,  l4.get_color(), False),
-            (mdd_n,  mdd_arr,  l5.get_color(), False),
-            (intradd_n, intradd_arr, l8.get_color(), False),
+            (max_equity_dd_n,  max_equity_dd_arr,  l5.get_color(), False),
+            (max_price_dd_n, max_price_dd_arr, l8.get_color(), False),
             (pnlseq_n, pnlseq_arr, l9.get_color(), False),
-            (avgdd_n, avgdd_arr, l10.get_color(), False),
+            (avg_price_dd_n, avg_price_dd_arr, l10.get_color(), False),
             (pnlvas_n, pnl_vas_arr, l11.get_color(), False),
         ]
         y_tol = 0.02
@@ -914,7 +919,7 @@ try:
             equity_best = np.cumprod(1.0 + r_sorted_best.astype(np.float64))
             run_max_b = np.maximum.accumulate(equity_best)
             dd_series = equity_best / (run_max_b + 1e-12) - 1.0
-            max_dd_best = float(abs(np.min(dd_series)) * 100.0)
+            max_equity_dd_best = float(abs(np.min(dd_series)) * 100.0)
             _avg_dd_equity_unused = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
         else:
             max_dd_best = 0.0; _avg_dd_equity_unused = 0.0
@@ -930,7 +935,7 @@ try:
             f"sharpe: {sharpe_best:.2f}\n"
             f"mean: {mean_best:.2f}%\n"
             f"median: {med_best:.2f}%\n"
-            f"max_dd: {max_dd_best:.2f}%\n"
+            f"max_equity_dd: {max_equity_dd_best:.2f}%\n"
             f"avg_dd: {avg_dd_seq_best:.2f}%\n"
             f"max_intratrade_dd: {max_intra_best:.2f}%\n"
             f"pnl_seq: {pnl_seq_best:.2f}%\n"

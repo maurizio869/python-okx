@@ -1,6 +1,11 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 16:40 — правка номер 3
+# Last modified (MSK): 2025-08-31 18:55 — правка номер 4
 # Changes:
+# - Renamed all drawdown variables for clarity:
+#   * mdd -> max_equity_dd (equity curve drawdown)
+#   * avg_dd -> avg_equity_dd (for equity) and avg_price_dd (for price)
+#   * intradd -> max_price_dd (price movement within trades)
+# - Updated graph labels and annotations to use new names
 # - Added class imbalance output: shows percentage of class 1 samples
 # - Changed target variable logic: now detects drops <= -0.35% instead of jumps >= 0.35%
 # - Using np.min() to find minimum close price in prediction window instead of np.max()
@@ -566,9 +571,9 @@ thr_min,thr_max,thr_step=0.15,0.99,0.0025
 print(f"Перебор порога по PnL (валидация): min={thr_min:.3f}, max={thr_max:.3f}, step={thr_step:.4f}")
 
 thresholds=np.arange(thr_min,thr_max+1e-12,thr_step)
-thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]; trades_list=[]; mean_ret_list=[]; median_ret_list=[]; mdd_list=[]
+thr_list=[]; pnl_list=[]; comp_list=[]; sharpe_list=[]; trades_list=[]; mean_ret_list=[]; median_ret_list=[]; max_equity_dd_list=[]
 
-max_intra_dd_list=[]; pnl_seq_list=[]
+max_price_dd_list=[]; pnl_seq_list=[]
 
 def _safe_sharpe_arr(r: np.ndarray) -> float:
     if r.size < 2: return 0.0
@@ -594,11 +599,11 @@ for t in thresholds:
         equity = np.cumprod(1.0 + r_sorted.astype(np.float64))
         run_max = np.maximum.accumulate(equity)
         dd = np.min(equity / (run_max + 1e-12) - 1.0) if equity.size>0 else 0.0
-        mddp = float(abs(dd) * 100.0)
+        max_equity_dd_pct = float(abs(dd) * 100.0)
         if comp>best_comp:
             best_comp=comp; best_thr=float(t); best_trades=n
     # new metrics per threshold
-    def _max_intratrade_dd_pct_for_mask(mask: np.ndarray) -> float:
+    def _max_price_dd_pct_for_mask(mask: np.ndarray) -> float:
         if not np.any(mask): return 0.0
         ent_ = entry_idx[mask]
         dd_min = 0.0; has_any=False
@@ -625,9 +630,9 @@ for t in thresholds:
                 equity *= (1.0 + float(r_i))
                 last_exit = int(e_i + PRED_WINDOW)
         return float((equity - 1.0) * 100.0)
-    max_intra_dd_list.append(_max_intratrade_dd_pct_for_mask(m))
+    max_price_dd_list.append(_max_price_dd_pct_for_mask(m))
     pnl_seq_list.append(_pnl_seq_pct_for_mask(m))
-    thr_list.append(float(t)); pnl_list.append(sret*100.0); comp_list.append(comp*100.0 if np.isfinite(comp) else np.nan); sharpe_list.append(shp); trades_list.append(n); mean_ret_list.append(meanp); median_ret_list.append(medp); mdd_list.append(mddp)
+    thr_list.append(float(t)); pnl_list.append(sret*100.0); comp_list.append(comp*100.0 if np.isfinite(comp) else np.nan); sharpe_list.append(shp); trades_list.append(n); mean_ret_list.append(meanp); median_ret_list.append(medp); max_equity_dd_list.append(max_equity_dd_pct)
 print(f"Выбран порог по PnL (валидация): {best_thr:.4f}, comp_ret={best_comp*100 if np.isfinite(best_comp) else float('nan'):.2f}% trades={best_trades}")
 
 try:
@@ -639,8 +644,8 @@ try:
     shp_arr = np.asarray(sharpe_list)
     mean_arr = np.asarray(mean_ret_list)
     med_arr  = np.asarray(median_ret_list)
-    mdd_arr  = np.asarray(mdd_list)
-    intradd_arr = np.asarray(max_intra_dd_list)
+    max_equity_dd_arr  = np.asarray(max_equity_dd_list)
+    max_price_dd_arr = np.asarray(max_price_dd_list)
     pnlseq_arr = np.asarray(pnl_seq_list)
     # avg_dd (seq, price) per threshold using sequential non-overlapping trades
     def _avg_price_dd_seq_pct_for_mask(mask: np.ndarray) -> float:
@@ -662,8 +667,8 @@ try:
                         dd_vals.append(abs(dd_i))
                 last_exit = int(e_i + PRED_WINDOW)
         return float(np.mean(dd_vals) * 100.0) if len(dd_vals) > 0 else 0.0
-    avgdd_seq_list = [ _avg_price_dd_seq_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
-    avgdd_arr = np.asarray(avgdd_seq_list)
+    avg_price_dd_list = [ _avg_price_dd_seq_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
+    avg_price_dd_arr = np.asarray(avg_price_dd_list)
     # pnl_vas (seq) per threshold with dynamic exit rules
     def _pnl_vas_pct_for_mask(mask: np.ndarray, stop_loss_pct: float) -> float:
         if not np.any(mask):
@@ -737,22 +742,22 @@ try:
     def _norm(a):
         a = np.asarray(a, dtype=np.float64)
         return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a) + 1e-12) if a.size>0 else a
-    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); mdd_n = _norm(mdd_arr); intradd_n = _norm(intradd_arr); pnlseq_n = _norm(pnlseq_arr); avgdd_n = _norm(avgdd_arr); pnlvas_n = _norm(pnl_vas_arr)
+    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); max_equity_dd_n = _norm(max_equity_dd_arr); max_price_dd_n = _norm(max_price_dd_arr); pnlseq_n = _norm(pnlseq_arr); avg_price_dd_n = _norm(avg_price_dd_arr); pnlvas_n = _norm(pnl_vas_arr)
 
     # styles: mean black dashed, median gray dashed; others distinct
     l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color='#1f77b4', linewidth=1.8)
     l2, = ax1.plot(thr_arr, pnl_n,  label='pnl_sum (norm)',  color='#ff7f0e', linewidth=1.8)
     l3, = ax1.plot(thr_arr, mean_n, label='mean_ret (norm)', color='#000000', linestyle='--', linewidth=1.6)
     l4, = ax1.plot(thr_arr, med_n,  label='median_ret (norm)', color='#7f7f7f', linestyle='--', linewidth=1.6)
-    l5, = ax1.plot(thr_arr, mdd_n,  label='max_drawdown (norm)', color='#2ca02c', linestyle='-', linewidth=1.6)
+    l5, = ax1.plot(thr_arr, max_equity_dd_n,  label='max_equity_dd (norm)', color='#2ca02c', linestyle='-', linewidth=1.6)
     l6, = ax2.plot(thr_arr, shp_arr, label='Sharpe', color='#9467bd', alpha=0.9)
     # add Trades on separate invisible y-axis
     ax3 = ax1.twinx(); ax3.get_yaxis().set_visible(False)
     l7, = ax3.plot(thr_arr, np.asarray(trades_list), label='Trades', color='#8c564b')
     # new metrics on left axis
-    l8, = ax1.plot(thr_arr, intradd_n, label='Max IntraTrade DD (price, %)', color='#98df8a', linewidth=1.6)
+    l8, = ax1.plot(thr_arr, max_price_dd_n, label='max_price_dd (%)', color='#98df8a', linewidth=1.6)
     l9, = ax1.plot(thr_arr, pnlseq_n, label='PnL (seq, %)', color='#d62728', linewidth=1.6)
-    l10, = ax1.plot(thr_arr, avgdd_n, label='avg_dd (%)', color='#17becf', linewidth=1.6)
+    l10, = ax1.plot(thr_arr, avg_price_dd_n, label='avg_price_dd (%)', color='#17becf', linewidth=1.6)
     l11, = ax1.plot(thr_arr, pnlvas_n, label='PnL (vas, %)', color='#bcbd22', linewidth=1.6)
     # placeholder for pnl_vas; will compute below
 
@@ -791,7 +796,7 @@ try:
         thr_min_v = float(thr_min); thr_max_v = float(thr_max)
         delta = thr_max_v - thr_min_v
         t_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
-        def _avg_dd_for_mask(mask):
+        def _avg_equity_dd_for_mask(mask):
             ent = entry_idx[mask]
             order = np.argsort(ent)
             r_sorted = ret_val[mask][order] if np.any(mask) else np.array([], dtype=np.float64)
@@ -807,10 +812,10 @@ try:
             (pnl_n,  pnl_arr,  l2.get_color(), False),
             (mean_n, mean_arr, l3.get_color(), False),
             (med_n,  med_arr,  l4.get_color(), False),
-            (mdd_n,  mdd_arr,  l5.get_color(), False),
-            (intradd_n, intradd_arr, l8.get_color(), False),
+            (max_equity_dd_n,  max_equity_dd_arr,  l5.get_color(), False),
+            (max_price_dd_n, max_price_dd_arr, l8.get_color(), False),
             (pnlseq_n, pnlseq_arr, l9.get_color(), False),
-            (avgdd_n, avgdd_arr, l10.get_color(), False),
+            (avg_price_dd_n, avg_price_dd_arr, l10.get_color(), False),
             (pnlvas_n, pnl_vas_arr, l11.get_color(), False),
         ]
         y_tol = 0.02
@@ -833,8 +838,8 @@ try:
                 text = f"{rv:.2f}"
                 if with_avg:
                     mask_here = (val_probs_all_np >= t_mod)
-                    avg_dd = _avg_dd_for_mask(mask_here)
-                    text = f"{rv:.2f}\navg_dd={avg_dd:.2f}%"
+                    avg_equity_dd = _avg_equity_dd_for_mask(mask_here)
+                    text = f"{rv:.2f}\navg_equity_dd={avg_equity_dd:.2f}%"
                 items.append((yv, text, col, idx))
             buckets = {}
             for (yv, text, col, idx) in items:
@@ -902,13 +907,13 @@ try:
             equity_best = np.cumprod(1.0 + r_sorted_best.astype(np.float64))
             run_max_b = np.maximum.accumulate(equity_best)
             dd_series = equity_best / (run_max_b + 1e-12) - 1.0
-            max_dd_best = float(abs(np.min(dd_series)) * 100.0)
-            _avg_dd_equity_unused = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
+            max_equity_dd_best = float(abs(np.min(dd_series)) * 100.0)
+            avg_equity_dd_unused = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
         else:
-            max_dd_best = 0.0; _avg_dd_equity_unused = 0.0
-        max_intra_best = _max_intratrade_dd_pct_for_mask(mask_best)
+            max_equity_dd_best = 0.0; avg_equity_dd_unused = 0.0
+        max_price_dd_best = _max_price_dd_pct_for_mask(mask_best)
         pnl_seq_best = _pnl_seq_pct_for_mask(mask_best)
-        avg_dd_seq_best = _avg_price_dd_seq_pct_for_mask(mask_best)
+        avg_price_dd_best = _avg_price_dd_seq_pct_for_mask(mask_best)
         pnl_vas_best = _pnl_vas_pct_for_mask(mask_best, PNL_VAS_SL_MIN + (best_thr_local - thr_min) * (PNL_VAS_SL_MAX - PNL_VAS_SL_MIN) / (thr_max - thr_min))
         text = (
             f"comp_ret: {float(comp_arr[i_best]):.2f}%\n"
@@ -918,9 +923,9 @@ try:
             f"sharpe: {sharpe_best:.2f}\n"
             f"mean: {mean_best:.2f}%\n"
             f"median: {med_best:.2f}%\n"
-            f"max_dd: {max_dd_best:.2f}%\n"
-            f"avg_dd: {avg_dd_seq_best:.2f}%\n"
-            f"max_intratrade_dd: {max_intra_best:.2f}%\n"
+            f"max_equity_dd: {max_equity_dd_best:.2f}%\n"
+            f"avg_price_dd: {avg_price_dd_best:.2f}%\n"
+            f"max_price_dd: {max_price_dd_best:.2f}%\n"
             f"pnl_seq: {pnl_seq_best:.2f}%\n"
             f"pnl_vas: {pnl_vas_best:.2f}%"
         )
