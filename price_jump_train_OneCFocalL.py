@@ -1,8 +1,9 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 20:13 — правка номер 17
+# Last modified (MSK): 2025-08-31 20:27 — правка номер 18
 # Changes:
-# - Removed all interactive annotation code (with_avg parameter and processing)
-# - Removed unused _avg_equity_dd_for_mask function
+# - Added avg_equity_dd curve to threshold sweep graph with its own annotations
+# - Added avg_equity_dd_best to max comp_ret annotation (replaced unused variable)
+# - Restored _avg_equity_dd_pct_for_mask function for computing equity DD
 # - Completed renaming of ALL drawdown variables throughout the script (mdd->max_equity_dd, avgdd->avg_price_dd, intradd->max_price_dd)
 # - Fixed legend labels on threshold sweep graph to match renamed DD variables
 # - Fixed max comp_ret annotation to use correct variable names (max_price_dd_best, avg_price_dd_best)
@@ -687,6 +688,24 @@ try:
         return float(np.mean(dd_vals) * 100.0) if len(dd_vals) > 0 else 0.0
     avg_price_dd_list = [ _avg_price_dd_seq_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
     avg_price_dd_arr = np.asarray(avg_price_dd_list)
+    
+    # avg_equity_dd per threshold using equity curve
+    def _avg_equity_dd_pct_for_mask(mask: np.ndarray) -> float:
+        if not np.any(mask):
+            return 0.0
+        ent = entry_idx[mask]
+        order = np.argsort(ent)
+        r_sorted = ret_val[mask][order] if np.any(mask) else np.array([], dtype=np.float64)
+        if r_sorted.size == 0:
+            return 0.0
+        equity = np.cumprod(1.0 + r_sorted.astype(np.float64))
+        run_max = np.maximum.accumulate(equity)
+        dd = equity / (run_max + 1e-12) - 1.0
+        dd = np.clip(dd, -1.0, 0.0)
+        return float(abs(np.mean(dd)) * 100.0)
+    
+    avg_equity_dd_list = [ _avg_equity_dd_pct_for_mask(val_probs_all_np >= t) for t in thr_arr ]
+    avg_equity_dd_arr = np.asarray(avg_equity_dd_list)
     # pnl_vas (seq) per threshold with dynamic exit rules
     def _pnl_vas_pct_for_mask(mask: np.ndarray, stop_loss_pct: float) -> float:
         if not np.any(mask):
@@ -760,7 +779,7 @@ try:
     def _norm(a):
         a = np.asarray(a, dtype=np.float64)
         return (a - np.nanmin(a)) / (np.nanmax(a) - np.nanmin(a) + 1e-12) if a.size>0 else a
-    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); max_equity_dd_n = _norm(max_equity_dd_arr); max_price_dd_n = _norm(max_price_dd_arr); pnlseq_n = _norm(pnlseq_arr); avg_price_dd_n = _norm(avg_price_dd_arr); pnlvas_n = _norm(pnl_vas_arr)
+    comp_n = _norm(comp_arr); pnl_n = _norm(pnl_arr); mean_n = _norm(mean_arr); med_n = _norm(med_arr); max_equity_dd_n = _norm(max_equity_dd_arr); max_price_dd_n = _norm(max_price_dd_arr); pnlseq_n = _norm(pnlseq_arr); avg_price_dd_n = _norm(avg_price_dd_arr); avg_equity_dd_n = _norm(avg_equity_dd_arr); pnlvas_n = _norm(pnl_vas_arr)
 
     # styles: mean black dashed, median gray dashed; others distinct
     l1, = ax1.plot(thr_arr, comp_n, label='comp_ret (norm)', color='#1f77b4', linewidth=1.8)
@@ -776,7 +795,8 @@ try:
     l8, = ax1.plot(thr_arr, max_price_dd_n, label='max_price_dd (%)', color='#98df8a', linewidth=1.6)
     l9, = ax1.plot(thr_arr, pnlseq_n, label='PnL (seq, %)', color='#d62728', linewidth=1.6)
     l10, = ax1.plot(thr_arr, avg_price_dd_n, label='avg_price_dd (%)', color='#17becf', linewidth=1.6)
-    l11, = ax1.plot(thr_arr, pnlvas_n, label='PnL (vas, %)', color='#bcbd22', linewidth=1.6)
+    l11, = ax1.plot(thr_arr, avg_equity_dd_n, label='avg_equity_dd (%)', color='#e377c2', linewidth=1.6)
+    l12, = ax1.plot(thr_arr, pnlvas_n, label='PnL (vas, %)', color='#bcbd22', linewidth=1.6)
     # placeholder for pnl_vas; will compute below
 
     # constants box outside on the right; legend below
@@ -824,7 +844,8 @@ try:
             (max_price_dd_n, max_price_dd_arr, l8.get_color()),
             (pnlseq_n, pnlseq_arr, l9.get_color()),
             (avg_price_dd_n, avg_price_dd_arr, l10.get_color()),
-            (pnlvas_n, pnl_vas_arr, l11.get_color()),
+            (avg_equity_dd_n, avg_equity_dd_arr, l11.get_color()),
+            (pnlvas_n, pnl_vas_arr, l12.get_color()),
         ]
         y_tol = 0.02
         # shifted thirds to reduce overlaps at x: for series indices per-third
@@ -912,12 +933,13 @@ try:
             run_max_b = np.maximum.accumulate(equity_best)
             dd_series = equity_best / (run_max_b + 1e-12) - 1.0
             max_equity_dd_best = float(abs(np.min(dd_series)) * 100.0)
-            avg_equity_dd_unused = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
+            avg_equity_dd_best = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
         else:
-            max_equity_dd_best = 0.0; avg_equity_dd_unused = 0.0
+            max_equity_dd_best = 0.0; avg_equity_dd_best = 0.0
         max_price_dd_best = _max_price_dd_pct_for_mask(mask_best)
         pnl_seq_best = _pnl_seq_pct_for_mask(mask_best)
         avg_price_dd_best = _avg_price_dd_seq_pct_for_mask(mask_best)
+        avg_equity_dd_best = _avg_equity_dd_pct_for_mask(mask_best)
         pnl_vas_best = _pnl_vas_pct_for_mask(mask_best, PNL_VAS_SL_MIN + (best_thr_local - thr_min) * (PNL_VAS_SL_MAX - PNL_VAS_SL_MIN) / (thr_max - thr_min))
         text = (
             f"comp_ret: {float(comp_arr[i_best]):.2f}%\n"
@@ -929,6 +951,7 @@ try:
             f"median: {med_best:.2f}%\n"
             f"max_equity_dd: {max_equity_dd_best:.2f}%\n"
             f"avg_price_dd: {avg_price_dd_best:.2f}%\n"
+            f"avg_equity_dd: {avg_equity_dd_best:.2f}%\n"
             f"max_price_dd: {max_price_dd_best:.2f}%\n"
             f"pnl_seq: {pnl_seq_best:.2f}%\n"
             f"pnl_vas: {pnl_vas_best:.2f}%"
