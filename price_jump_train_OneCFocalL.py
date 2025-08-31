@@ -1,8 +1,12 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-30 19:32 — правка номер 8
+# Last modified (MSK): 2025-08-31 16:20 — правка номер 9
 # Changes:
+# - Updated BEST_LR_MULTIPLIER from 2.4 to 2.8
+# - Updated ONECYCLE_DIV_FACTOR from 2.0 to 20.0
+# - Updated ONECYCLE_FINAL_DIV_FACTOR from 7.5 to 10
+# - Updated SAVE_MIN_PR_AUC from 0.60 to 0.601
+# - Updated AUTOTUNE_GAMMA from 1.4 to 1.35
 # - Updated DEFAULT_DROPOUT from 0.37 to 0.35
-# - Updated AUTOTUNE_GAMMA from 1.6 to 1.4
 # - Removed fees from PnL calculation in training epochs and curves plot (ret_val_fixed_no_fee)
 # - Kept fees in threshold sweep and threshold plot metrics (ret_val with fees)
 # - Updated AUTOTUNE_WD_MULT from 1.4 to 1.0
@@ -61,18 +65,18 @@ best_lr_default = 6.17e-03
 LR_FINDER_MIN_FACTOR = 1.0/20.0
 LR_FINDER_MAX_FACTOR = 8.0
 # OneCycle shape
-BEST_LR_MULTIPLIER = 2.4
+BEST_LR_MULTIPLIER = 2.8
 CLIP_MIN_FACTOR = 0.8
 CLIP_MAX_FACTOR = 8.0
 ONECYCLE_PCT_START = 0.12
-ONECYCLE_DIV_FACTOR = 2.0
-ONECYCLE_FINAL_DIV_FACTOR = 7.5
+ONECYCLE_DIV_FACTOR = 20.0
+ONECYCLE_FINAL_DIV_FACTOR = 10
 WEIGHT_DECAY = 4.5e-5
 DEFAULT_DROPOUT = 0.35
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EARLY_STOP_EPOCHS = 80
 NPR_EPS = 1e-12
-SAVE_MIN_PR_AUC = 0.60
+SAVE_MIN_PR_AUC = 0.601
 GRADCLIP_MAXNORM_1_APPLY = True
 GRADCLIP_MAXNORM = 0.9
 USE_STANDARD_SCALER = False
@@ -91,7 +95,7 @@ FOCAL_GAMMA = 1.5
 
 # Autotune parameters (triggered once when PR_AUC crosses threshold)
 AUTOTUNE_PRAUC_THRESHOLD = 0.601
-AUTOTUNE_GAMMA = 1.4
+AUTOTUNE_GAMMA = 1.35
 AUTOTUNE_WD_MULT = 1.0
 AUTOTUNE_BETA1 = 0.8
 AUTOTUNE_APPLY_BETA = True
