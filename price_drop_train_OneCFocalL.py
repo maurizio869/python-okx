@@ -1,9 +1,11 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 16:27 — правка номер 1
+# Last modified (MSK): 2025-08-31 16:34 — правка номер 2
 # Changes:
+# - Changed target variable logic: now detects drops <= -0.35% instead of jumps >= 0.35%
+# - Using np.min() to find minimum close price in prediction window instead of np.max()
+# - Label = 1 when (min_close/current_open - 1) <= -DROP_THRESHOLD
 # - Created from price_jump_train_OneCFocalL.py for DROP prediction
 # - Changed all "jump" references to "drop" in model names and paths
-# - Modified to predict price drops of 0.35% instead of price jumps
 """OneCycle LSTM training with Focal Loss for DROP prediction.
 Based on price_jump_train_OneCFocalL.py; modified for predicting price drops instead of jumps.
 """
@@ -104,8 +106,8 @@ class CandleDataset(Dataset):
         self.samples = []
         for i in range(SEQ_LEN, len(self.closes) - PRED_WINDOW):
             current_open = float(self.opens[i])
-            max_close = float(np.max(self.closes[i+1:i+PRED_WINDOW+1]))
-            label = 1 if (max_close / max(current_open, 1e-12) - 1.0) >= JUMP_THRESHOLD else 0
+            min_close = float(np.min(self.closes[i+1:i+PRED_WINDOW+1]))  # Ищем минимум для падения
+            label = 1 if (min_close / max(current_open, 1e-12) - 1.0) <= -DROP_THRESHOLD else 0  # Падение <= -0.35%
             self.samples.append((i, label))
 
     def fit_scaler_on_indices(self, sample_indices: list[int]) -> None:
