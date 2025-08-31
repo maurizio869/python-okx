@@ -1,7 +1,8 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 19:58 — правка номер 6
+# Last modified (MSK): 2025-08-31 20:13 — правка номер 7
 # Changes:
-# - Fixed comment: avg_dd -> avg_price_dd for consistency
+# - Removed all interactive annotation code (with_avg parameter and processing)
+# - Removed unused _avg_equity_dd_for_mask function
 # - Fixed annotations to match graph curves: avg_price_dd annotations now show price DD values
 # - Renamed all drawdown variables for clarity:
 #   * mdd -> max_equity_dd (equity curve drawdown)
@@ -798,27 +799,17 @@ try:
         thr_min_v = float(thr_min); thr_max_v = float(thr_max)
         delta = thr_max_v - thr_min_v
         t_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
-        def _avg_equity_dd_for_mask(mask):
-            ent = entry_idx[mask]
-            order = np.argsort(ent)
-            r_sorted = ret_val[mask][order] if np.any(mask) else np.array([], dtype=np.float64)
-            if r_sorted.size == 0:
-                return 0.0
-            equity = np.cumprod(1.0 + r_sorted.astype(np.float64))
-            run_max = np.maximum.accumulate(equity)
-            dd = equity / (run_max + 1e-12) - 1.0
-            dd = np.clip(dd, -1.0, 0.0)
-            return float(abs(np.mean(dd)) * 100.0)
+
         series = [
-            (comp_n, comp_arr, l1.get_color(), False),
-            (pnl_n,  pnl_arr,  l2.get_color(), False),
-            (mean_n, mean_arr, l3.get_color(), False),
-            (med_n,  med_arr,  l4.get_color(), False),
-            (max_equity_dd_n,  max_equity_dd_arr,  l5.get_color(), False),
-            (max_price_dd_n, max_price_dd_arr, l8.get_color(), False),
-            (pnlseq_n, pnlseq_arr, l9.get_color(), False),
-            (avg_price_dd_n, avg_price_dd_arr, l10.get_color(), False),
-            (pnlvas_n, pnl_vas_arr, l11.get_color(), False),
+            (comp_n, comp_arr, l1.get_color()),
+            (pnl_n,  pnl_arr,  l2.get_color()),
+            (mean_n, mean_arr, l3.get_color()),
+            (med_n,  med_arr,  l4.get_color()),
+            (max_equity_dd_n,  max_equity_dd_arr,  l5.get_color()),
+            (max_price_dd_n, max_price_dd_arr, l8.get_color()),
+            (pnlseq_n, pnlseq_arr, l9.get_color()),
+            (avg_price_dd_n, avg_price_dd_arr, l10.get_color()),
+            (pnlvas_n, pnl_vas_arr, l11.get_color()),
         ]
         y_tol = 0.02
         # shifted thirds to reduce overlaps at x: for series indices per-third
@@ -827,7 +818,7 @@ try:
         base_points = [thr_min_v, thr_min_v + delta/3.0, thr_min_v + 2.0*delta/3.0, thr_max_v]
         for base_idx, base_t in enumerate(base_points):
             items = []
-            for si, (yn, yr, col, with_avg) in enumerate(series):
+            for si, (yn, yr, col) in enumerate(series):
                 t_mod = base_t
                 if base_idx in (1, 2):
                     sh = shift_map[si] if si < len(shift_map) else 0
@@ -838,10 +829,6 @@ try:
                 yv = float(yn[idx])
                 rv = float(yr[idx])
                 text = f"{rv:.2f}"
-                if with_avg:
-                    mask_here = (val_probs_all_np >= t_mod)
-                    avg_price_dd_val = _avg_price_dd_seq_pct_for_mask(mask_here)
-                    text = f"{rv:.2f}\navg_price_dd={avg_price_dd_val:.2f}%"
                 items.append((yv, text, col, idx))
             buckets = {}
             for (yv, text, col, idx) in items:
