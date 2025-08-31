@@ -1,65 +1,10 @@
 # lstm_predictor_class.py
-# Сводка обновлений проекта
+# Класс для инференса обученной LSTM модели
+# БЕЗ нормализации (USE_STANDARD_SCALER = False в обучении)
 
-"""
-Обновить скрипты и заголовки
+import numpy as np
+import torch
 
-price_jump_train_OneCFocalL.py was updated:
-
-avgdd_arr = np.asarray(avgdd_seq_list) added (line 666) to fix avg_dd metric plotting.
-AUTOTUNE_WD_MULT changed from 1.4 to 1.0 (line 90).
-ret_val_fixed_no_fee introduced (line 307) to remove fees from PnL in training epochs/curves, retaining them in threshold sweep.
-DEFAULT_DROPOUT changed from 0.37 to 0.35 (line 69), and AUTOTUNE_GAMMA from 1.6 to 1.4 (line 92). All changes were pushed to origin/cursor/abc. A new file, lstm_predictor.py, was created, providing a class for model inference with feature preparation (specific order, clipping, no normalization) matching training.
-claude-4.1-opus • cursor/bc-2cd0f2ad-abb3-410b-8a21-671a05b3303e-d98a
-Diff
-Chat
-Diff
-Chat
-131 earlier messages
-Summary
-price_jump_train_OneCFocalL.py was updated:
-
-avgdd_arr = np.asarray(avgdd_seq_list) added (line 666) to fix avg_dd metric plotting.
-AUTOTUNE_WD_MULT changed from 1.4 to 1.0 (line 90).
-ret_val_fixed_no_fee introduced (line 307) to remove fees from PnL in training epochs/curves, retaining them in threshold sweep.
-DEFAULT_DROPOUT changed from 0.37 to 0.35 (line 69), and AUTOTUNE_GAMMA from 1.6 to 1.4 (line 92).
-All changes were pushed to origin/cursor/abc.
-A new file, lstm_predictor.py, was created, providing a class for model inference with feature preparation (specific order, clipping, no normalization) matching training.
-Нтрмализация есть в обучении (onecfocall)?, standart scaler используется в обучении(вроде он там есть но не используется)? ​обрезка выбросов сейчас есть а обучении?
-Отличный вопрос! Давайте проверим, что именно используется в скрипте обучения price_jump_train_OneCFocalL.py.
-
-Used grep and ran terminal command
-Теперь давайте посмотрим подробнее на подготовку фичей:
-
-Ran: sed -n '148,175p' price_jump_train_OneCFocalL.py
-Теперь проверим значение USE_STANDARD_SCALER и что происходит при обучении:
-
-Ran: sed -n '217,225p' price_jump_train_OneCFocalL.py
-Отлично! Теперь у меня полная картина. Вот что происходит в обучении:
-
-Анализ нормализации в price_jump_train_OneCFocalL.py:
-1. StandardScaler - НЕ ИСПОЛЬЗУЕТСЯ!
-USE_STANDARD_SCALER = False  # Строка 78
-StandardScaler выключен, хотя код для него есть. Это значит, что данные идут в модель БЕЗ стандартизации.
-
-2. Обрезка выбросов - ЕСТЬ!
-# Строки 159-160 в __getitem__:
-upper_w = np.clip(highs_w - np.maximum(opens_w, closes_w), 0.0, None)  # Обрезка снизу от 0
-lower_w = np.clip(np.minimum(opens_w, closes_w) - lows_w, 0.0, None)   # Обрезка снизу от 0
-Обрезаются только отрицательные значения для хвостов свечей (что логично, они не могут быть отрицательными).
-
-3. Порядок фичей в обучении:
-# Строки 163-171:
-x_seq = np.stack([
-    closes_w,   # 0
-    opens_w,    # 1
-    highs_w,    # 2
-    lows_w,     # 3
-    vols_w,     # 4
-    ratio_up,   # 5 (upper_wick/body)
-    ratio_dn,   # 6 (lower_wick/body)
-], axis=0)
-Правильный код для инференса БЕЗ нормализации:
 class LSTMPredictor:
     def __init__(self, model_path='lstm_jump_PRAUC.pt', seq_len=30):
         self.seq_len = seq_len
@@ -128,4 +73,3 @@ class LSTMPredictor:
             prob_jump = probs[0, 1].item()
         
         return prob_jump, "OK"
-"""
