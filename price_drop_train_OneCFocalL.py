@@ -1,6 +1,7 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 16:34 — правка номер 2
+# Last modified (MSK): 2025-08-31 16:40 — правка номер 3
 # Changes:
+# - Added class imbalance output: shows percentage of class 1 samples
 # - Changed target variable logic: now detects drops <= -0.35% instead of jumps >= 0.35%
 # - Using np.min() to find minimum close price in prediction window instead of np.max()
 # - Label = 1 when (min_close/current_open - 1) <= -DROP_THRESHOLD
@@ -202,6 +203,7 @@ neg_cnt = len(ds) - pos_cnt
 print(f"Меток 1: {pos_cnt}")
 print(f"Меток 0: {neg_cnt}")
 POS_FRAC = float(pos_cnt) / max(1, (pos_cnt + neg_cnt))
+print(f"Дисбаланс классов: {POS_FRAC:.1%} (доля меток 1)")
 
 val = int(len(ds)*VAL_SPLIT)
 # fixed split

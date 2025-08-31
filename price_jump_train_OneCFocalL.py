@@ -1,6 +1,7 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 16:20 — правка номер 9
+# Last modified (MSK): 2025-08-31 16:40 — правка номер 10
 # Changes:
+# - Added class imbalance output: shows percentage of class 1 samples
 # - Updated BEST_LR_MULTIPLIER from 2.4 to 2.8
 # - Updated ONECYCLE_DIV_FACTOR from 2.0 to 20.0
 # - Updated ONECYCLE_FINAL_DIV_FACTOR from 7.5 to 10
@@ -214,6 +215,7 @@ neg_cnt = len(ds) - pos_cnt
 print(f"Меток 1: {pos_cnt}")
 print(f"Меток 0: {neg_cnt}")
 POS_FRAC = float(pos_cnt) / max(1, (pos_cnt + neg_cnt))
+print(f"Дисбаланс классов: {POS_FRAC:.1%} (доля меток 1)")
 
 val = int(len(ds)*VAL_SPLIT)
 # fixed split
