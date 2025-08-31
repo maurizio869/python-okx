@@ -1,6 +1,7 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 19:38 — правка номер 12
+# Last modified (MSK): 2025-08-31 19:50 — правка номер 13
 # Changes:
+# - Fixed max comp_ret annotation to use correct variable names (max_price_dd_best, avg_price_dd_best)
 # - Fixed annotations to match graph curves: avg_price_dd annotations now show price DD values
 # - Renamed all drawdown variables for clarity:
 #   * mdd -> max_equity_dd (equity curve drawdown)
@@ -923,10 +924,10 @@ try:
             max_equity_dd_best = float(abs(np.min(dd_series)) * 100.0)
             _avg_dd_equity_unused = float(abs(np.mean(np.clip(dd_series, -1.0, 0.0))) * 100.0)
         else:
-            max_dd_best = 0.0; _avg_dd_equity_unused = 0.0
-        max_intra_best = _max_intratrade_dd_pct_for_mask(mask_best)
+            max_equity_dd_best = 0.0; avg_equity_dd_unused = 0.0
+        max_price_dd_best = _max_price_dd_pct_for_mask(mask_best)
         pnl_seq_best = _pnl_seq_pct_for_mask(mask_best)
-        avg_dd_seq_best = _avg_price_dd_seq_pct_for_mask(mask_best)
+        avg_price_dd_best = _avg_price_dd_seq_pct_for_mask(mask_best)
         pnl_vas_best = _pnl_vas_pct_for_mask(mask_best, PNL_VAS_SL_MIN + (best_thr_local - thr_min) * (PNL_VAS_SL_MAX - PNL_VAS_SL_MIN) / (thr_max - thr_min))
         text = (
             f"comp_ret: {float(comp_arr[i_best]):.2f}%\n"
@@ -937,8 +938,8 @@ try:
             f"mean: {mean_best:.2f}%\n"
             f"median: {med_best:.2f}%\n"
             f"max_equity_dd: {max_equity_dd_best:.2f}%\n"
-            f"avg_dd: {avg_dd_seq_best:.2f}%\n"
-            f"max_intratrade_dd: {max_intra_best:.2f}%\n"
+            f"avg_price_dd: {avg_price_dd_best:.2f}%\n"
+            f"max_price_dd: {max_price_dd_best:.2f}%\n"
             f"pnl_seq: {pnl_seq_best:.2f}%\n"
             f"pnl_vas: {pnl_vas_best:.2f}%"
         )
