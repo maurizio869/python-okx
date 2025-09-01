@@ -1,9 +1,7 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 21:18 — правка номер 10
+# Last modified (MSK): 2025-09-01 12:06 — правка номер 11
 # Changes:
-# - Fixed legend to include l12 (PnL vas) which was missing
-# - Now all 12 lines are properly shown in the legend
-# - max_price_dd was already present on graph and in annotations
+# - Changed ONECYCLE_FINAL_DIV_FACTOR from 10 to 7.5
 # - Fixed annotations to match graph curves: avg_price_dd annotations now show price DD values
 # - Renamed all drawdown variables for clarity:
 #   * mdd -> max_equity_dd (equity curve drawdown)
@@ -68,7 +66,7 @@ CLIP_MIN_FACTOR = 0.8
 CLIP_MAX_FACTOR = 8.0
 ONECYCLE_PCT_START = 0.12
 ONECYCLE_DIV_FACTOR = 20.0
-ONECYCLE_FINAL_DIV_FACTOR = 10
+ONECYCLE_FINAL_DIV_FACTOR = 7.5
 WEIGHT_DECAY = 4.5e-5
 DEFAULT_DROPOUT = 0.35
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
