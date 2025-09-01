@@ -1,7 +1,7 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-09-01 12:06 — правка номер 11
+# Last modified (MSK): 2025-09-01 12:28 — правка номер 12
 # Changes:
-# - Changed ONECYCLE_FINAL_DIV_FACTOR from 10 to 7.5
+# - Changed training data file from candles_10d.json to candles_train.json
 # - Fixed annotations to match graph curves: avg_price_dd annotations now show price DD values
 # - Renamed all drawdown variables for clarity:
 #   * mdd -> max_equity_dd (equity curve drawdown)
@@ -48,7 +48,7 @@ except Exception:
 
 # Constants copied from OneCycle
 SEQ_LEN, PRED_WINDOW, DROP_THRESHOLD = 30, 5, 0.0035
-TRAIN_JSON = Path("candles_10d.json")
+TRAIN_JSON = Path("candles_train.json")
 MODEL_PATH = Path("lstm_drop_PRAUC.pt")
 PNL_MODEL_PATH = Path("lstm_drop_pnl.pt")
 VALACC_MODEL_PATH = Path("lstm_drop_valacc.pt")

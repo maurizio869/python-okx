@@ -12,7 +12,7 @@ from torch.utils.data import Dataset, DataLoader, random_split
 
 # Константы/пути
 SEQ_LEN, PRED_WINDOW, JUMP_THRESHOLD = 30, 5, 0.0035
-TRAIN_JSON = Path("candles_10d.json")
+TRAIN_JSON = Path("candles_train.json")
 MODEL_PATH = Path("lstm_jump.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
 HYPER_PATH = MODEL_PATH.with_suffix(".hyper.json")

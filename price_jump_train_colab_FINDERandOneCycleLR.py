@@ -45,7 +45,7 @@ USE_MAKER_FEES = False
 ENTRY_FEE = MAKER_FEE if USE_MAKER_FEES else TAKER_FEE
 EXIT_FEE  = MAKER_FEE if USE_MAKER_FEES else TAKER_FEE
 
-TRAIN_JSON = Path("candles_10d.json")
+TRAIN_JSON = Path("candles_train.json")
 MODEL_PATH = Path("lstm_jump_PRAUC.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 VALACC_MODEL_PATH = Path("lstm_jump_valacc.pt")

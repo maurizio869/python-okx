@@ -131,7 +131,7 @@ class LSTMClassifier(nn.Module):
 
 
 # ─── параметры обучения ───────────────────────────────────────────
-TRAIN_JSON = Path("candles_10d.json")
+TRAIN_JSON = Path("candles_train.json")
 MODEL_PATH = Path("lstm_jump.pt")
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")

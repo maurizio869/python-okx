@@ -18,7 +18,7 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.metrics import roc_curve
 
 # ─── ПАРАМЕТРЫ ────────────────────────────────────────────────────
-EVAL_JSON = Path("candles_2d.json")   # файл свечей для теста
+EVAL_JSON = Path("candles_eval.json")   # файл свечей для теста
 MODEL_PATH = Path("lstm_jump.pt")     # обученная модель
 PNL_MODEL_PATH = Path("lstm_jump_pnl.pt")  # модель, отобранная по PnL
 MODEL_META_PATH = MODEL_PATH.with_suffix(".meta.json")
