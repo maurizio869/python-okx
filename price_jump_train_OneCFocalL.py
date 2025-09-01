@@ -1,7 +1,7 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-09-01 12:28 — правка номер 21
+# Last modified (MSK): 2025-09-01 14:44 — правка номер 22
 # Changes:
-# - Changed training data file from candles_10d.json to candles_train.json
+# - Changed ONECYCLE_FINAL_DIV_FACTOR back to 10 (from 7.5)
 # - Completed renaming of ALL drawdown variables throughout the script (mdd->max_equity_dd, avgdd->avg_price_dd, intradd->max_price_dd)
 # - Fixed legend labels on threshold sweep graph to match renamed DD variables
 # - Fixed max comp_ret annotation to use correct variable names (max_price_dd_best, avg_price_dd_best)
@@ -81,7 +81,7 @@ CLIP_MIN_FACTOR = 0.8
 CLIP_MAX_FACTOR = 8.0
 ONECYCLE_PCT_START = 0.12
 ONECYCLE_DIV_FACTOR = 20.0
-ONECYCLE_FINAL_DIV_FACTOR = 7.5
+ONECYCLE_FINAL_DIV_FACTOR = 10
 WEIGHT_DECAY = 4.5e-5
 DEFAULT_DROPOUT = 0.35
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
