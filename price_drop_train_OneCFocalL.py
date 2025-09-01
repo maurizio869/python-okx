@@ -1,10 +1,9 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 20:52 — правка номер 9
+# Last modified (MSK): 2025-08-31 21:18 — правка номер 10
 # Changes:
-# - Changed all PnL calculations to SHORT logic (entry/exit reversed)
-# - Changed intra-trade DD to use max_high instead of min_low (SHORT positions)
-# - Updated _pnl_vas_pct_for_mask for SHORT: stop-loss on highs, exit on price drop
-# - All metrics now correctly reflect SHORT trading (selling instead of buying)
+# - Fixed legend to include l12 (PnL vas) which was missing
+# - Now all 12 lines are properly shown in the legend
+# - max_price_dd was already present on graph and in annotations
 # - Fixed annotations to match graph curves: avg_price_dd annotations now show price DD values
 # - Renamed all drawdown variables for clarity:
 #   * mdd -> max_equity_dd (equity curve drawdown)
@@ -819,7 +818,7 @@ try:
                  bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
 
     handles, labels = [], []
-    for ln in (l1, l2, l3, l4, l5, l6, l7, l8, l9, l10, l11):
+    for ln in (l1, l2, l3, l4, l5, l6, l7, l8, l9, l10, l11, l12):
         handles.append(ln); labels.append(ln.get_label())
     leg2 = ax1.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, -0.18), ncol=5)
 

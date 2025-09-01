@@ -1,9 +1,9 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-08-31 20:27 — правка номер 18
+# Last modified (MSK): 2025-08-31 21:18 — правка номер 19
 # Changes:
-# - Added avg_equity_dd curve to threshold sweep graph with its own annotations
-# - Added avg_equity_dd_best to max comp_ret annotation (replaced unused variable)
-# - Restored _avg_equity_dd_pct_for_mask function for computing equity DD
+# - Fixed legend to include l12 (PnL vas) which was missing
+# - Now all 12 lines are properly shown in the legend
+# - max_price_dd was already present on graph and in annotations
 # - Completed renaming of ALL drawdown variables throughout the script (mdd->max_equity_dd, avgdd->avg_price_dd, intradd->max_price_dd)
 # - Fixed legend labels on threshold sweep graph to match renamed DD variables
 # - Fixed max comp_ret annotation to use correct variable names (max_price_dd_best, avg_price_dd_best)
@@ -824,7 +824,7 @@ try:
                  bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.7))
 
     handles, labels = [], []
-    for ln in (l1, l2, l3, l4, l5, l6, l7, l8, l9, l10, l11):
+    for ln in (l1, l2, l3, l4, l5, l6, l7, l8, l9, l10, l11, l12):
         handles.append(ln); labels.append(ln.get_label())
     leg2 = ax1.legend(handles, labels, loc='upper center', bbox_to_anchor=(0.5, -0.18), ncol=5)
 
