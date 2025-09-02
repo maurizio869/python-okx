@@ -1,7 +1,8 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-09-01 14:44 — правка номер 22
+# Last modified (MSK): 2025-09-01 14:57 — правка номер 23
 # Changes:
-# - Changed ONECYCLE_FINAL_DIV_FACTOR back to 10 (from 7.5)
+# - Added candle count and class imbalance info to both curves and threshold sweep graphs
+# - Info displayed as "{script_name}\n{count} candles, {imbalance%}"
 # - Completed renaming of ALL drawdown variables throughout the script (mdd->max_equity_dd, avgdd->avg_price_dd, intradd->max_price_dd)
 # - Fixed legend labels on threshold sweep graph to match renamed DD variables
 # - Fixed max comp_ret annotation to use correct variable names (max_price_dd_best, avg_price_dd_best)
@@ -557,7 +558,9 @@ try:
         _script_name = Path(__file__).name
     except Exception:
         _script_name = "price_jump_train_OneCFocalL.py"
-    ax.text(0.02, 0.02, _script_name, transform=ax.transAxes,
+    # Добавляем информацию о количестве свечей и дисбалансе
+    info_text = f"{_script_name}\n{len(df)} candles, {POS_FRAC:.1%}"
+    ax.text(0.02, 0.02, info_text, transform=ax.transAxes,
             ha='left', va='bottom', fontsize=8,
             bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
     plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]'); plt.grid(True, alpha=0.3)
@@ -958,6 +961,16 @@ try:
                      xytext=(0.5, 1.04), textcoords='axes fraction',
                      ha='center', va='bottom', fontsize=12,
                      bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.85))
+    # Добавляем информацию о количестве свечей и дисбалансе (с отступом от края)
+    try:
+        _script_name = Path(__file__).name
+    except Exception:
+        _script_name = "price_jump_train_OneCFocalL.py"
+    info_text = f"{_script_name}\n{len(df)} candles, {POS_FRAC:.1%}"
+    ax1.text(0.05, 0.02, info_text, transform=ax1.transAxes,
+             ha='left', va='bottom', fontsize=8,
+             bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
+    
     # keep tight_layout inside try
     plt.tight_layout(rect=[0.0, 0.22, 0.78, 1])
     out_name = f'threshold_sweep_{ts}.png'; fig.savefig(out_name, dpi=130)

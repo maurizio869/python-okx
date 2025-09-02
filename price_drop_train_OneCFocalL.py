@@ -1,7 +1,8 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-09-01 12:28 — правка номер 12
+# Last modified (MSK): 2025-09-01 14:57 — правка номер 13
 # Changes:
-# - Changed training data file from candles_10d.json to candles_train.json
+# - Added candle count and class imbalance info to both curves and threshold sweep graphs
+# - Info displayed as "{script_name}\n{count} candles, {imbalance%}"
 # - Fixed annotations to match graph curves: avg_price_dd annotations now show price DD values
 # - Renamed all drawdown variables for clarity:
 #   * mdd -> max_equity_dd (equity curve drawdown)
@@ -543,7 +544,9 @@ try:
         _script_name = Path(__file__).name
     except Exception:
         _script_name = "price_jump_train_OneCFocalL.py"
-    ax.text(0.02, 0.02, _script_name, transform=ax.transAxes,
+    # Добавляем информацию о количестве свечей и дисбалансе
+    info_text = f"{_script_name}\n{len(df)} candles, {POS_FRAC:.1%}"
+    ax.text(0.02, 0.02, info_text, transform=ax.transAxes,
             ha='left', va='bottom', fontsize=8,
             bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
     plt.xlabel('Epoch'); plt.ylabel('Normalized scale [0,1]'); plt.grid(True, alpha=0.3)
@@ -952,6 +955,16 @@ try:
                      xytext=(0.5, 1.04), textcoords='axes fraction',
                      ha='center', va='bottom', fontsize=12,
                      bbox=dict(boxstyle='round,pad=0.3', fc='white', alpha=0.85))
+    # Добавляем информацию о количестве свечей и дисбалансе (с отступом от края)
+    try:
+        _script_name = Path(__file__).name
+    except Exception:
+        _script_name = "price_drop_train_OneCFocalL.py"
+    info_text = f"{_script_name}\n{len(df)} candles, {POS_FRAC:.1%}"
+    ax1.text(0.05, 0.02, info_text, transform=ax1.transAxes,
+             ha='left', va='bottom', fontsize=8,
+             bbox=dict(boxstyle='round,pad=0.2', fc='white', alpha=0.5))
+    
     # keep tight_layout inside try
     plt.tight_layout(rect=[0.0, 0.22, 0.78, 1])
     out_name = f'threshold_sweep_{ts}.png'; fig.savefig(out_name, dpi=130)
