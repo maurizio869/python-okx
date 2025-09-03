@@ -1,10 +1,11 @@
 # eval.py
-# Last modified (MSK): 2025-09-03 19:18 — правка номер 4
+# Last modified (MSK): 2025-09-03 19:51 — правка номер 5
 # Changes:
 # - правка 1: Создан единый eval скрипт для обеих моделей (jump и drop)
 # - правка 2: Переименован из price_jump_drop_eval_OneCFocalL.py в eval.py
 # - правка 3: Исправлена загрузка модели - параметры архитектуры берутся из checkpoint
 # - правка 4: Исправлены дата и время в шапке на правильные из системы Linux
+# - правка 5: Добавлен флаг USE_CONSTANT_THRESHOLD для использования фиксированных порогов вместо подбираемых
 """Единый eval скрипт для jump и drop моделей OneCFocalL"""
 
 from pathlib import Path
@@ -35,6 +36,11 @@ SEQ_LEN = 30
 PRED_WINDOW = 5
 JUMP_THRESHOLD = 0.0035
 DROP_THRESHOLD = 0.0035
+
+# Флаг для использования фиксированных порогов
+USE_CONSTANT_THRESHOLD = False
+CONSTANT_JUMP_THRESHOLD = 0.5
+CONSTANT_DROP_THRESHOLD = 0.5
 
 def load_df(path: Path) -> pd.DataFrame:
     with open(path) as f:
@@ -202,15 +208,27 @@ def load_model_and_predict(model_path: Path, df: pd.DataFrame, model_name: str):
     optimal_idx = np.argmax(tpr - fpr)
     optimal_threshold = thresholds[optimal_idx]
     
-    # Бинаризация предсказаний
-    preds = (probs >= optimal_threshold).astype(np.int8)
+    print(f"Оптимальный порог (подобран): {optimal_threshold:.4f}")
     
-    print(f"Оптимальный порог: {optimal_threshold:.4f}")
+    # Проверяем флаг USE_CONSTANT_THRESHOLD
+    if USE_CONSTANT_THRESHOLD:
+        if "jump" in model_name.lower():
+            used_threshold = CONSTANT_JUMP_THRESHOLD
+            print(f"Используем константу jump_threshold={used_threshold:.4f} для jump предсказаний")
+        else:
+            used_threshold = CONSTANT_DROP_THRESHOLD
+            print(f"Используем константу drop_threshold={used_threshold:.4f} для drop предсказаний")
+    else:
+        used_threshold = optimal_threshold
+    
+    # Бинаризация предсказаний
+    preds = (probs >= used_threshold).astype(np.int8)
+    
     print(f"Предсказаний 0: {np.sum(preds == 0)}")
     print(f"Предсказаний 1: {np.sum(preds == 1)}")
     print(f"Процент предсказаний 1: {np.mean(preds == 1)*100:.2f}%")
     
-    return probs, preds, optimal_threshold
+    return probs, preds, used_threshold
 
 # ─── ОСНОВНОЙ КОД ─────────────────────────────────────────────────
 print("=" * 60)
