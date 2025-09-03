@@ -1,5 +1,5 @@
 # eval.py
-# Last modified (MSK): 2025-09-03 23:05 — правка номер 10
+# Last modified (MSK): 2025-09-03 23:11 — правка номер 11
 # Changes:
 # - правка 1: Создан единый eval скрипт для обеих моделей (jump и drop)
 # - правка 2: Переименован из price_jump_drop_eval_OneCFocalL.py в eval.py
@@ -11,6 +11,7 @@
 # - правка 8: Изменена логика body_smaller для SHORT: (close_j - open_j) > (close_prev - open_prev)
 # - правка 9: Установлены константы порогов: CONSTANT_JUMP_THRESHOLD=0.64, CONSTANT_DROP_THRESHOLD=0.75
 # - правка 10: Изменен CONSTANT_JUMP_THRESHOLD с 0.64 на 0.82
+# - правка 11: Добавлено условие удержания позиции при наличии подтверждающего сигнала того же направления
 """Единый eval скрипт для jump и drop моделей OneCFocalL"""
 
 from pathlib import Path
@@ -336,7 +337,10 @@ def calculate_pnl_vas2(df, preds_jump, preds_drop, threshold_jump, threshold_dro
                     body_smaller = (body_current < body_prev)
                     price_up_enough = ((close_j / entry_open - 1.0) >= PNL_VAS_THRESH_PCT)
                     
-                    if body_smaller and prev_green and price_up_enough:
+                    # Проверяем, есть ли подтверждающий сигнал того же направления
+                    has_same_signal = (j in jump_indices)
+                    
+                    if body_smaller and prev_green and price_up_enough and not has_same_signal:
                         exit_idx = j
                         break
                         
@@ -358,7 +362,10 @@ def calculate_pnl_vas2(df, preds_jump, preds_drop, threshold_jump, threshold_dro
                     body_smaller = ((close_j - open_j) > (close_prev - open_prev))
                     price_down_enough = ((close_j / entry_open - 1.0) <= -PNL_VAS_THRESH_PCT)
                     
-                    if body_smaller and prev_red and price_down_enough:
+                    # Проверяем, есть ли подтверждающий сигнал того же направления
+                    has_same_signal = (j in drop_indices)
+                    
+                    if body_smaller and prev_red and price_down_enough and not has_same_signal:
                         exit_idx = j
                         break
         
