@@ -1,7 +1,8 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-09-03 20:17 — правка номер 16
+# Last modified (MSK): 2025-09-03 22:37 — правка номер 17
 # Changes:
 # - правка 16: изменен PNL_VAS_SL_MIN с -0.006 на -0.015 для расширения диапазона стоп-лосса
+# - правка 17: изменена логика body_smaller для SHORT в PnL VAS: (close_j - open_j) > (close_prev - open_prev)
 # - правка 15: добавлен вывод FOCAL_GAMMA в блоки констант на обоих графиках
 # - правка 14: обновлены параметры (WEIGHT_DECAY=7.5e-5, DEFAULT_DROPOUT=0.25, SAVE_MIN_PR_AUC=0.62, FOCAL_GAMMA=2.4, AUTOTUNE_GAMMA=1.9, ONECYCLE_FINAL_DIV_FACTOR=10.0); добавлена аннотация max val_acc на curves
 # - Added candle count and class imbalance info to both curves and threshold sweep graphs
@@ -760,14 +761,13 @@ try:
                 close_j = float(ds.closes[j]); open_j = float(ds.opens[j])
                 close_prev = float(ds.closes[j-1]) if j-1 >= 0 else close_j
                 open_prev = float(ds.opens[j-1]) if j-1 >= 0 else open_j
-                prev_green = (close_prev > open_prev)
-                body_current = (close_j - open_j)
-                body_prev = (close_prev - open_prev)
-                body_smaller = (body_current < body_prev)
+                prev_red = (close_prev < open_prev)  # Изменено: prev_red вместо prev_green
+                # Новая логика: выход когда падение замедляется или разворот
+                body_smaller = ((close_j - open_j) > (close_prev - open_prev))
                 # SHORT: выход когда цена упала достаточно
                 price_down_enough = ((entry_open / close_j - 1.0) >= PNL_VAS_THRESH_PCT)
                 # SHORT: выход на красной свече после падения
-                if body_smaller and not prev_green and price_down_enough:
+                if body_smaller and prev_red and price_down_enough:
                     exit_idx = j
                     break
             if exit_idx is None:

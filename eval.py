@@ -1,5 +1,5 @@
 # eval.py
-# Last modified (MSK): 2025-09-03 21:20 — правка номер 7
+# Last modified (MSK): 2025-09-03 22:37 — правка номер 8
 # Changes:
 # - правка 1: Создан единый eval скрипт для обеих моделей (jump и drop)
 # - правка 2: Переименован из price_jump_drop_eval_OneCFocalL.py в eval.py
@@ -8,6 +8,7 @@
 # - правка 5: Добавлен флаг USE_CONSTANT_THRESHOLD для использования фиксированных порогов вместо подбираемых
 # - правка 6: Добавлен расчет PnL VAS для комбинированных сигналов jump и drop с сохранением сделок для визуализации
 # - правка 7: Переименована метрика PnL VAS в PnL VAS2 (двойная стратегия)
+# - правка 8: Изменена логика body_smaller для SHORT: (close_j - open_j) > (close_prev - open_prev)
 """Единый eval скрипт для jump и drop моделей OneCFocalL"""
 
 from pathlib import Path
@@ -351,9 +352,8 @@ def calculate_pnl_vas2(df, preds_jump, preds_drop, threshold_jump, threshold_dro
                     close_prev = float(closes[j-1])
                     open_prev = float(opens[j-1])
                     prev_red = (close_prev < open_prev)
-                    body_current = abs(close_j - open_j)
-                    body_prev = abs(close_prev - open_prev)
-                    body_smaller = (body_current < body_prev)
+                    # Новая логика: выход когда падение замедляется или разворот
+                    body_smaller = ((close_j - open_j) > (close_prev - open_prev))
                     price_down_enough = ((close_j / entry_open - 1.0) <= -PNL_VAS_THRESH_PCT)
                     
                     if body_smaller and prev_red and price_down_enough:
