@@ -1,9 +1,10 @@
 # eval.py
-# Last modified (MSK): 2025-01-03 19:17 — правка номер 3
+# Last modified (MSK): 2025-09-03 19:18 — правка номер 4
 # Changes:
 # - правка 1: Создан единый eval скрипт для обеих моделей (jump и drop)
 # - правка 2: Переименован из price_jump_drop_eval_OneCFocalL.py в eval.py
 # - правка 3: Исправлена загрузка модели - параметры архитектуры берутся из checkpoint
+# - правка 4: Исправлены дата и время в шапке на правильные из системы Linux
 """Единый eval скрипт для jump и drop моделей OneCFocalL"""
 
 from pathlib import Path
