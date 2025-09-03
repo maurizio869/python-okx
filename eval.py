@@ -1,10 +1,8 @@
-# price_jump_drop_eval_OneCFocalL.py
-# Last modified (MSK): 2025-01-03 18:45 — правка номер 1
+# eval.py
+# Last modified (MSK): 2025-01-03 18:54 — правка номер 2
 # Changes:
-# - Создан единый eval скрипт для обеих моделей (jump и drop)
-# - Загружает lstm_jump.pt и lstm_drop.pt
-# - Делает предсказания от обеих моделей
-# - Сохраняет результаты в viz_data.npz
+# - правка 1: Создан единый eval скрипт для обеих моделей (jump и drop)
+# - правка 2: Переименован из price_jump_drop_eval_OneCFocalL.py в eval.py
 """Единый eval скрипт для jump и drop моделей OneCFocalL"""
 
 from pathlib import Path
