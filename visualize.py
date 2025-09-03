@@ -1,8 +1,9 @@
 # visualize.py
-# Last modified (MSK): 2025-01-03 18:56 — правка номер 2
+# Last modified (MSK): 2025-09-03 21:13 — правка номер 3
 # Changes:
 # - правка 1: Добавлена поддержка отображения jump (синие) и drop (оранжевые) предсказаний
 # - правка 2: Переименован из price_jump_visualize.py в visualize.py
+# - правка 3: Добавлена визуализация сделок PnL VAS (зеленые прямоугольники для LONG, красные для SHORT) и аннотация с результатом
 """Загружает файл viz_data.npz и строит свечной график с отметками 
 прогнозируемых скачков (синие линии снизу) и падений (оранжевые линии сверху).
 """
@@ -101,6 +102,68 @@ if drop_dates:
         bottom_y = min(y_max, high_price + margin)
         price_ax.vlines(vd, bottom_y, y_max,
                         colors="orange", linewidth=1.2, alpha=0.8)
+
+# Визуализация сделок PnL VAS если есть
+if "trades" in npz.files:
+    trades = npz["trades"]
+    if hasattr(trades, 'tolist'):
+        trades = trades.tolist()  # Конвертируем из numpy если нужно
+    
+    if trades:
+        print(f"\nВизуализация {len(trades)} сделок PnL VAS")
+        
+        for trade in trades:
+            entry_idx = trade['entry_idx']
+            exit_idx = trade['exit_idx']
+            entry_price = trade['entry_price']
+            exit_price = trade['exit_price']
+            trade_type = trade['type']
+            
+            # Находим даты для входа и выхода
+            if entry_idx < len(idx) and exit_idx < len(idx):
+                entry_date = idx[entry_idx].tz_localize(None)
+                exit_date = idx[exit_idx].tz_localize(None)
+                
+                # Цвет и прозрачность в зависимости от типа
+                if trade_type == 'long':
+                    color = 'green'
+                    alpha = 0.15  # Сильная прозрачность
+                else:  # SHORT
+                    color = 'red'
+                    alpha = 0.15  # Сильная прозрачность
+                
+                # Рисуем прямоугольник
+                from matplotlib.patches import Rectangle
+                import matplotlib.dates as mdates
+                
+                # Конвертируем даты в числовой формат matplotlib
+                x_start = mdates.date2num(entry_date)
+                x_end = mdates.date2num(exit_date)
+                width = x_end - x_start
+                
+                # Определяем высоту прямоугольника
+                y_bottom = min(entry_price, exit_price)
+                height = abs(exit_price - entry_price)
+                
+                rect = Rectangle((x_start, y_bottom), width, height,
+                               linewidth=0, facecolor=color, alpha=alpha)
+                price_ax.add_patch(rect)
+
+# Добавляем аннотацию с PnL VAS под графиком
+if "pnl_vas" in npz.files:
+    pnl_vas = float(npz["pnl_vas"])
+    stop_loss = float(npz["pnl_vas_stop_loss"])
+    
+    # Получаем позицию для аннотации
+    fig_text = f"PnL VAS: {pnl_vas:.2f}% (стоп-лосс: {stop_loss*100:.2f}%)"
+    
+    # Добавляем текст под графиком
+    fig.text(0.5, 0.01, fig_text, 
+             horizontalalignment='center',
+             fontsize=10, 
+             bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.3))
+    
+    print(f"\n{fig_text}")
 
 import matplotlib.pyplot as plt
 plt.show()

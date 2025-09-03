@@ -1,11 +1,12 @@
 # eval.py
-# Last modified (MSK): 2025-09-03 19:51 — правка номер 5
+# Last modified (MSK): 2025-09-03 21:13 — правка номер 6
 # Changes:
 # - правка 1: Создан единый eval скрипт для обеих моделей (jump и drop)
 # - правка 2: Переименован из price_jump_drop_eval_OneCFocalL.py в eval.py
 # - правка 3: Исправлена загрузка модели - параметры архитектуры берутся из checkpoint
 # - правка 4: Исправлены дата и время в шапке на правильные из системы Linux
 # - правка 5: Добавлен флаг USE_CONSTANT_THRESHOLD для использования фиксированных порогов вместо подбираемых
+# - правка 6: Добавлен расчет PnL VAS для комбинированных сигналов jump и drop с сохранением сделок для визуализации
 """Единый eval скрипт для jump и drop моделей OneCFocalL"""
 
 from pathlib import Path
@@ -41,6 +42,14 @@ DROP_THRESHOLD = 0.0035
 USE_CONSTANT_THRESHOLD = False
 CONSTANT_JUMP_THRESHOLD = 0.5
 CONSTANT_DROP_THRESHOLD = 0.5
+
+# PnL_VAS parameters (sequential, dynamic exit)
+PNL_VAS_THRESH_PCT = 0.0025   # +0.25% above/below entry open
+PNL_VAS_MAX_HOLD_MIN = 10     # fallback hold minutes if no early exit
+PNL_VAS_SWEEP_THR = 0.55      # fixed threshold for SL sweep
+PNL_VAS_SL_MIN = -0.015       # -1.5%
+PNL_VAS_SL_MAX = -0.0001      # -0.01%
+PNL_VAS_SL_STEP = 0.0001      # 0.01%
 
 def load_df(path: Path) -> pd.DataFrame:
     with open(path) as f:
@@ -249,6 +258,163 @@ probs_drop, preds_drop, threshold_drop = load_model_and_predict(
     DROP_MODEL_PATH, df, "Drop"
 )
 
+# ─── РАСЧЕТ PNL VAS ─────────────────────────────────────────────
+print("\n" + "=" * 60)
+print("📈 Расчет PnL VAS для комбинированных сигналов")
+
+def calculate_pnl_vas(df, preds_jump, preds_drop, threshold_jump, threshold_drop, stop_loss_pct):
+    """Расчет PnL VAS для комбинированных LONG и SHORT сигналов"""
+    
+    trades = []  # Список всех сделок для визуализации
+    equity = 1.0
+    last_exit = -10**9
+    
+    # Подготовка данных
+    opens = df['o'].values
+    highs = df['h'].values
+    lows = df['l'].values
+    closes = df['c'].values
+    
+    # Индексы где есть сигналы
+    jump_indices = np.where(preds_jump == 1)[0] + SEQ_LEN if preds_jump is not None else np.array([])
+    drop_indices = np.where(preds_drop == 1)[0] + SEQ_LEN if preds_drop is not None else np.array([])
+    
+    # Объединяем и сортируем все сигналы
+    all_signals = []
+    for idx in jump_indices:
+        all_signals.append((idx, 'long'))
+    for idx in drop_indices:
+        all_signals.append((idx, 'short'))
+    all_signals.sort(key=lambda x: x[0])
+    
+    # Обрабатываем сигналы последовательно
+    for signal_idx, signal_type in all_signals:
+        if signal_idx < last_exit:
+            continue  # Пропускаем если еще в позиции
+            
+        # Проверяем перекрытие сигналов
+        if signal_type == 'long' and signal_idx in drop_indices:
+            continue  # Пропускаем при одновременных сигналах
+        if signal_type == 'short' and signal_idx in jump_indices:
+            continue  # Пропускаем при одновременных сигналах
+            
+        entry_idx = signal_idx
+        entry_open = float(opens[entry_idx])
+        
+        if not np.isfinite(entry_open) or entry_open <= 0:
+            continue
+            
+        exit_idx = None
+        max_hold = max(PNL_VAS_MAX_HOLD_MIN, PRED_WINDOW)
+        
+        # Сканируем следующие свечи для выхода
+        for k in range(1, max_hold + 1):
+            j = entry_idx + k
+            if j >= len(opens):
+                break
+                
+            if signal_type == 'long':
+                # LONG: стоп-лосс на падении
+                low_j = float(lows[j])
+                if (low_j / entry_open - 1.0) <= stop_loss_pct:
+                    exit_idx = j
+                    break
+                    
+                # Динамический выход при росте
+                close_j = float(closes[j])
+                open_j = float(opens[j])
+                if j > 0:
+                    close_prev = float(closes[j-1])
+                    open_prev = float(opens[j-1])
+                    prev_green = (close_prev > open_prev)
+                    body_current = close_j - open_j
+                    body_prev = close_prev - open_prev
+                    body_smaller = (body_current < body_prev)
+                    price_up_enough = ((close_j / entry_open - 1.0) >= PNL_VAS_THRESH_PCT)
+                    
+                    if body_smaller and prev_green and price_up_enough:
+                        exit_idx = j
+                        break
+                        
+            else:  # SHORT
+                # SHORT: стоп-лосс на росте
+                high_j = float(highs[j])
+                if (high_j / entry_open - 1.0) >= abs(stop_loss_pct):
+                    exit_idx = j
+                    break
+                    
+                # Динамический выход при падении
+                close_j = float(closes[j])
+                open_j = float(opens[j])
+                if j > 0:
+                    close_prev = float(closes[j-1])
+                    open_prev = float(opens[j-1])
+                    prev_red = (close_prev < open_prev)
+                    body_current = abs(close_j - open_j)
+                    body_prev = abs(close_prev - open_prev)
+                    body_smaller = (body_current < body_prev)
+                    price_down_enough = ((close_j / entry_open - 1.0) <= -PNL_VAS_THRESH_PCT)
+                    
+                    if body_smaller and prev_red and price_down_enough:
+                        exit_idx = j
+                        break
+        
+        # Выход по таймауту если не сработали другие условия
+        if exit_idx is None:
+            exit_idx = min(entry_idx + max_hold, len(closes) - 1)
+            
+        exit_close = float(closes[exit_idx])
+        
+        # Расчет PnL
+        if signal_type == 'long':
+            pnl = (exit_close * (1.0 - EXIT_FEE)) / (entry_open * (1.0 + ENTRY_FEE)) - 1.0
+        else:  # SHORT
+            pnl = (entry_open * (1.0 - EXIT_FEE)) / (exit_close * (1.0 + ENTRY_FEE)) - 1.0
+            
+        equity *= (1.0 + pnl)
+        last_exit = exit_idx
+        
+        # Сохраняем сделку для визуализации
+        trades.append({
+            'type': signal_type,
+            'entry_idx': entry_idx,
+            'exit_idx': exit_idx,
+            'entry_price': entry_open,
+            'exit_price': exit_close,
+            'pnl': pnl
+        })
+    
+    return (equity - 1.0) * 100.0, trades
+
+# Подбор оптимального стоп-лосса
+if preds_jump is not None or preds_drop is not None:
+    sl_values = np.arange(PNL_VAS_SL_MIN, PNL_VAS_SL_MAX + 1e-12, PNL_VAS_SL_STEP)
+    best_sl = PNL_VAS_SL_MIN
+    best_pnl_vas = -np.inf
+    best_trades = []
+    
+    print(f"Подбор стоп-лосса из {len(sl_values)} вариантов...")
+    for sl in sl_values:
+        pnl_here, trades_here = calculate_pnl_vas(df, preds_jump, preds_drop, 
+                                                  threshold_jump, threshold_drop, float(sl))
+        if pnl_here > best_pnl_vas:
+            best_pnl_vas = pnl_here
+            best_sl = float(sl)
+            best_trades = trades_here
+    
+    print(f"✅ Выбран стоп-лосс: {best_sl*100:.2f}%")
+    print(f"📊 PnL VAS (compound): {best_pnl_vas:.2f}%")
+    print(f"📝 Количество сделок: {len(best_trades)}")
+    if best_trades:
+        long_trades = [t for t in best_trades if t['type'] == 'long']
+        short_trades = [t for t in best_trades if t['type'] == 'short']
+        print(f"   - LONG сделок: {len(long_trades)}")
+        print(f"   - SHORT сделок: {len(short_trades)}")
+else:
+    best_pnl_vas = 0.0
+    best_sl = PNL_VAS_SL_MIN
+    best_trades = []
+
 # Подготавливаем данные для сохранения
 save_data = {
     "index": df.index.astype("int64").values,
@@ -264,6 +430,10 @@ save_data = {
     "use_maker_fees": np.bool_(USE_MAKER_FEES),
     "entry_fee": np.float32(ENTRY_FEE),
     "exit_fee": np.float32(EXIT_FEE),
+    # PnL VAS данные
+    "pnl_vas": np.float32(best_pnl_vas),
+    "pnl_vas_stop_loss": np.float32(best_sl),
+    "trades": best_trades,  # Список сделок для визуализации
 }
 
 # Добавляем данные jump если есть
