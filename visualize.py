@@ -1,11 +1,12 @@
 # visualize.py
-# Last modified (MSK): 2025-09-03 21:32 — правка номер 5
+# Last modified (MSK): 2025-09-03 23:40 — правка номер 6
 # Changes:
 # - правка 1: Добавлена поддержка отображения jump (синие) и drop (оранжевые) предсказаний
 # - правка 2: Переименован из price_jump_visualize.py в visualize.py
 # - правка 3: Добавлена визуализация сделок PnL VAS (зеленые прямоугольники для LONG, красные для SHORT) и аннотация с результатом
 # - правка 4: Переименована метрика PnL VAS в PnL VAS2 (двойная стратегия)
 # - правка 5: Добавлен allow_pickle=True для загрузки trades (object array)
+# - правка 6: Улучшена визуализация сделок - добавлены слои комиссий и вывод всех метрик
 """Загружает файл viz_data.npz и строит свечной график с отметками 
 прогнозируемых скачков (синие линии снизу) и падений (оранжевые линии сверху).
 """
@@ -127,15 +128,11 @@ if "trades" in npz.files:
                 entry_date = idx[entry_idx].tz_localize(None)
                 exit_date = idx[exit_idx].tz_localize(None)
                 
-                # Цвет и прозрачность в зависимости от типа
-                if trade_type == 'long':
-                    color = 'green'
-                    alpha = 0.15  # Сильная прозрачность
-                else:  # SHORT
-                    color = 'red'
-                    alpha = 0.15  # Сильная прозрачность
+                # Получаем комиссии
+                entry_fee = float(npz.get('entry_fee', 0.0005))
+                exit_fee = float(npz.get('exit_fee', 0.0005))
                 
-                # Рисуем прямоугольник
+                # Рисуем слоеный прямоугольник с комиссиями
                 from matplotlib.patches import Rectangle
                 import matplotlib.dates as mdates
                 
@@ -144,29 +141,147 @@ if "trades" in npz.files:
                 x_end = mdates.date2num(exit_date)
                 width = x_end - x_start
                 
-                # Определяем высоту прямоугольника
-                y_bottom = min(entry_price, exit_price)
-                height = abs(exit_price - entry_price)
-                
-                rect = Rectangle((x_start, y_bottom), width, height,
-                               linewidth=0, facecolor=color, alpha=alpha)
-                price_ax.add_patch(rect)
+                if trade_type == 'long':
+                    # LONG: покупаем по entry_price, продаем по exit_price
+                    # Комиссия входа увеличивает цену покупки
+                    actual_entry = entry_price * (1 + entry_fee)
+                    # Комиссия выхода уменьшает цену продажи
+                    actual_exit = exit_price * (1 - exit_fee)
+                    
+                    # Слой 1: Комиссия входа (желтая, снизу)
+                    fee_entry_height = entry_price * entry_fee
+                    rect_fee_entry = Rectangle((x_start, entry_price), width, fee_entry_height,
+                                              linewidth=0, facecolor='yellow', alpha=0.3)
+                    price_ax.add_patch(rect_fee_entry)
+                    
+                    # Слой 2: Основное тело сделки (зеленое)
+                    body_bottom = actual_entry
+                    body_height = actual_exit - actual_entry
+                    if body_height > 0:  # Прибыльная сделка
+                        rect_body = Rectangle((x_start, body_bottom), width, body_height,
+                                             linewidth=0, facecolor='green', alpha=0.15)
+                    else:  # Убыточная сделка
+                        rect_body = Rectangle((x_start, actual_exit), width, abs(body_height),
+                                             linewidth=0, facecolor='red', alpha=0.15)
+                    price_ax.add_patch(rect_body)
+                    
+                    # Слой 3: Комиссия выхода (желтая, сверху)
+                    fee_exit_height = exit_price * exit_fee
+                    rect_fee_exit = Rectangle((x_start, actual_exit), width, fee_exit_height,
+                                             linewidth=0, facecolor='yellow', alpha=0.3)
+                    price_ax.add_patch(rect_fee_exit)
+                    
+                else:  # SHORT
+                    # SHORT: продаем по entry_price, откупаем по exit_price
+                    # Комиссия входа уменьшает цену продажи
+                    actual_entry = entry_price * (1 - entry_fee)
+                    # Комиссия выхода увеличивает цену откупа
+                    actual_exit = exit_price * (1 + exit_fee)
+                    
+                    # Слой 1: Комиссия входа (желтая, сверху от entry)
+                    fee_entry_height = entry_price * entry_fee
+                    rect_fee_entry = Rectangle((x_start, actual_entry), width, fee_entry_height,
+                                              linewidth=0, facecolor='yellow', alpha=0.3)
+                    price_ax.add_patch(rect_fee_entry)
+                    
+                    # Слой 2: Основное тело сделки
+                    body_bottom = min(actual_entry, actual_exit)
+                    body_height = abs(actual_entry - actual_exit)
+                    if actual_entry > actual_exit:  # Прибыльная SHORT
+                        rect_body = Rectangle((x_start, body_bottom), width, body_height,
+                                             linewidth=0, facecolor='green', alpha=0.15)
+                    else:  # Убыточная SHORT
+                        rect_body = Rectangle((x_start, body_bottom), width, body_height,
+                                             linewidth=0, facecolor='red', alpha=0.15)
+                    price_ax.add_patch(rect_body)
+                    
+                    # Слой 3: Комиссия выхода (желтая, снизу от exit)
+                    fee_exit_height = exit_price * exit_fee
+                    rect_fee_exit = Rectangle((x_start, exit_price), width, fee_exit_height,
+                                             linewidth=0, facecolor='yellow', alpha=0.3)
+                    price_ax.add_patch(rect_fee_exit)
 
-# Добавляем аннотацию с PnL VAS2 под графиком
+# Добавляем аннотацию со всеми метриками под графиком
+metrics_text_parts = []
+
+# Основные метрики
 if "pnl_vas2" in npz.files:
     pnl_vas2 = float(npz["pnl_vas2"])
     stop_loss = float(npz["pnl_vas2_stop_loss"])
+    metrics_text_parts.append(f"PnL VAS2: {pnl_vas2:.2f}% (SL: {stop_loss*100:.2f}%)")
+
+if "pnl_sum" in npz.files:
+    pnl_sum = float(npz["pnl_sum"])
+    metrics_text_parts.append(f"PnL Sum: {pnl_sum:.2f}%")
+
+if "mean_ret" in npz.files and "median_ret" in npz.files:
+    mean_ret = float(npz["mean_ret"])
+    median_ret = float(npz["median_ret"])
+    metrics_text_parts.append(f"Mean/Median: {mean_ret:.3f}%/{median_ret:.3f}%")
+
+if "sharpe" in npz.files:
+    sharpe = float(npz["sharpe"])
+    metrics_text_parts.append(f"Sharpe: {sharpe:.2f}")
+
+if "win_rate" in npz.files:
+    win_rate = float(npz["win_rate"])
+    metrics_text_parts.append(f"Win Rate: {win_rate:.1f}%")
+
+if "profit_factor" in npz.files:
+    profit_factor = float(npz["profit_factor"])
+    if profit_factor < 1000:  # Не inf
+        metrics_text_parts.append(f"PF: {profit_factor:.2f}")
+
+# Drawdown метрики
+dd_parts = []
+if "max_equity_dd" in npz.files:
+    max_equity_dd = float(npz["max_equity_dd"])
+    dd_parts.append(f"Max Eq DD: {max_equity_dd:.2f}%")
+
+if "avg_equity_dd" in npz.files:
+    avg_equity_dd = float(npz["avg_equity_dd"])
+    dd_parts.append(f"Avg Eq DD: {avg_equity_dd:.2f}%")
+
+if "max_price_dd" in npz.files:
+    max_price_dd = float(npz["max_price_dd"])
+    dd_parts.append(f"Max Price DD: {max_price_dd:.2f}%")
+
+if "avg_price_dd" in npz.files:
+    avg_price_dd = float(npz["avg_price_dd"])
+    dd_parts.append(f"Avg Price DD: {avg_price_dd:.2f}%")
+
+# Информация о сделках
+trade_info = []
+if "trades_count" in npz.files:
+    trades_count = int(npz["trades_count"])
+    trade_info.append(f"Trades: {trades_count}")
+
+if "long_trades" in npz.files and "short_trades" in npz.files:
+    long_trades = int(npz["long_trades"])
+    short_trades = int(npz["short_trades"])
+    trade_info.append(f"Long/Short: {long_trades}/{short_trades}")
+
+# Собираем весь текст
+if metrics_text_parts or dd_parts or trade_info:
+    # Первая строка - основные метрики
+    line1 = " | ".join(metrics_text_parts) if metrics_text_parts else ""
+    # Вторая строка - drawdown
+    line2 = " | ".join(dd_parts) if dd_parts else ""
+    # Третья строка - информация о сделках
+    line3 = " | ".join(trade_info) if trade_info else ""
     
-    # Получаем позицию для аннотации
-    fig_text = f"PnL VAS2: {pnl_vas2:.2f}% (стоп-лосс: {stop_loss*100:.2f}%)"
+    # Объединяем строки
+    full_text = "\n".join([l for l in [line1, line2, line3] if l])
     
     # Добавляем текст под графиком
-    fig.text(0.5, 0.01, fig_text, 
+    fig.text(0.5, 0.01, full_text, 
              horizontalalignment='center',
-             fontsize=10, 
-             bbox=dict(boxstyle='round,pad=0.3', facecolor='yellow', alpha=0.3))
+             fontsize=9, 
+             bbox=dict(boxstyle='round,pad=0.5', facecolor='lightblue', alpha=0.2),
+             verticalalignment='bottom',
+             multialignment='center')
     
-    print(f"\n{fig_text}")
+    print(f"\n📊 Метрики:\n{full_text}")
 
 import matplotlib.pyplot as plt
 plt.show()

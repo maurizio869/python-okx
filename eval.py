@@ -1,5 +1,5 @@
 # eval.py
-# Last modified (MSK): 2025-09-03 23:11 — правка номер 11
+# Last modified (MSK): 2025-09-03 23:40 — правка номер 12
 # Changes:
 # - правка 1: Создан единый eval скрипт для обеих моделей (jump и drop)
 # - правка 2: Переименован из price_jump_drop_eval_OneCFocalL.py в eval.py
@@ -12,6 +12,7 @@
 # - правка 9: Установлены константы порогов: CONSTANT_JUMP_THRESHOLD=0.64, CONSTANT_DROP_THRESHOLD=0.75
 # - правка 10: Изменен CONSTANT_JUMP_THRESHOLD с 0.64 на 0.82
 # - правка 11: Добавлено условие удержания позиции при наличии подтверждающего сигнала того же направления
+# - правка 12: Добавлен расчет всех метрик (как в train) и улучшена визуализация сделок с отображением комиссий
 """Единый eval скрипт для jump и drop моделей OneCFocalL"""
 
 from pathlib import Path
@@ -425,6 +426,96 @@ else:
     best_sl = PNL_VAS_SL_MIN
     best_trades = []
 
+# ─── РАСЧЕТ ДОПОЛНИТЕЛЬНЫХ МЕТРИК ─────────────────────────────────
+print("\n" + "=" * 60)
+print("📊 Расчет дополнительных метрик")
+
+# Инициализация метрик
+metrics = {
+    'pnl_vas2': best_pnl_vas2,
+    'pnl_vas2_stop_loss': best_sl,
+    'trades_count': len(best_trades),
+    'long_trades': len([t for t in best_trades if t['type'] == 'long']),
+    'short_trades': len([t for t in best_trades if t['type'] == 'short']),
+}
+
+if best_trades:
+    # PnL метрики из сделок
+    pnls = [t['pnl'] for t in best_trades]
+    metrics['pnl_sum'] = sum(pnls) * 100  # в процентах
+    metrics['mean_ret'] = np.mean(pnls) * 100 if pnls else 0
+    metrics['median_ret'] = np.median(pnls) * 100 if pnls else 0
+    
+    # Sharpe ratio (предполагаем дневную торговлю)
+    if len(pnls) > 1:
+        metrics['sharpe'] = np.mean(pnls) / np.std(pnls) * np.sqrt(252) if np.std(pnls) > 0 else 0
+    else:
+        metrics['sharpe'] = 0
+    
+    # Расчет equity curve для max drawdown
+    equity_curve = [1.0]
+    for pnl in pnls:
+        equity_curve.append(equity_curve[-1] * (1 + pnl))
+    equity_curve = np.array(equity_curve)
+    
+    # Max Equity Drawdown
+    peak = np.maximum.accumulate(equity_curve)
+    dd = (equity_curve - peak) / peak * 100
+    metrics['max_equity_dd'] = abs(np.min(dd)) if len(dd) > 0 else 0
+    
+    # Average Equity Drawdown
+    dd_periods = dd[dd < 0]
+    metrics['avg_equity_dd'] = abs(np.mean(dd_periods)) if len(dd_periods) > 0 else 0
+    
+    # Max Price Drawdown (intra-trade)
+    max_price_dds = []
+    for trade in best_trades:
+        # Для каждой сделки считаем максимальную просадку внутри
+        entry_price = trade['entry_price']
+        if trade['type'] == 'long':
+            # Для LONG: максимальное падение от entry_price
+            # Упрощенно: используем exit_price как худший случай
+            max_dd = min(0, (trade['exit_price'] / entry_price - 1) * 100)
+        else:  # SHORT
+            # Для SHORT: максимальный рост от entry_price
+            max_dd = min(0, (entry_price / trade['exit_price'] - 1) * 100)
+        max_price_dds.append(abs(max_dd))
+    
+    metrics['max_price_dd'] = max(max_price_dds) if max_price_dds else 0
+    metrics['avg_price_dd'] = np.mean(max_price_dds) if max_price_dds else 0
+    
+    # Win rate
+    wins = [p for p in pnls if p > 0]
+    metrics['win_rate'] = len(wins) / len(pnls) * 100 if pnls else 0
+    
+    # Profit factor
+    gross_profit = sum([p for p in pnls if p > 0])
+    gross_loss = abs(sum([p for p in pnls if p < 0]))
+    metrics['profit_factor'] = gross_profit / gross_loss if gross_loss > 0 else np.inf
+    
+else:
+    # Нулевые метрики если нет сделок
+    metrics.update({
+        'pnl_sum': 0, 'mean_ret': 0, 'median_ret': 0, 'sharpe': 0,
+        'max_equity_dd': 0, 'avg_equity_dd': 0, 'max_price_dd': 0, 
+        'avg_price_dd': 0, 'win_rate': 0, 'profit_factor': 0
+    })
+
+# Вывод метрик
+print(f"\n📈 Метрики производительности:")
+print(f"  • PnL VAS2 (compound): {metrics['pnl_vas2']:.2f}%")
+print(f"  • PnL Sum: {metrics['pnl_sum']:.2f}%")
+print(f"  • Mean Return: {metrics['mean_ret']:.3f}%")
+print(f"  • Median Return: {metrics['median_ret']:.3f}%")
+print(f"  • Sharpe Ratio: {metrics['sharpe']:.2f}")
+print(f"  • Win Rate: {metrics['win_rate']:.1f}%")
+print(f"  • Profit Factor: {metrics['profit_factor']:.2f}")
+print(f"\n📉 Drawdown метрики:")
+print(f"  • Max Equity DD: {metrics['max_equity_dd']:.2f}%")
+print(f"  • Avg Equity DD: {metrics['avg_equity_dd']:.2f}%")
+print(f"  • Max Price DD: {metrics['max_price_dd']:.2f}%")
+print(f"  • Avg Price DD: {metrics['avg_price_dd']:.2f}%")
+
 # Подготавливаем данные для сохранения
 save_data = {
     "index": df.index.astype("int64").values,
@@ -440,10 +531,24 @@ save_data = {
     "use_maker_fees": np.bool_(USE_MAKER_FEES),
     "entry_fee": np.float32(ENTRY_FEE),
     "exit_fee": np.float32(EXIT_FEE),
-    # PnL VAS2 данные
-    "pnl_vas2": np.float32(best_pnl_vas2),
+    # PnL VAS2 данные и метрики
+    "pnl_vas2": np.float32(metrics['pnl_vas2']),
     "pnl_vas2_stop_loss": np.float32(best_sl),
     "trades": best_trades,  # Список сделок для визуализации
+    # Дополнительные метрики
+    "pnl_sum": np.float32(metrics['pnl_sum']),
+    "mean_ret": np.float32(metrics['mean_ret']),
+    "median_ret": np.float32(metrics['median_ret']),
+    "sharpe": np.float32(metrics['sharpe']),
+    "win_rate": np.float32(metrics['win_rate']),
+    "profit_factor": np.float32(metrics['profit_factor']),
+    "max_equity_dd": np.float32(metrics['max_equity_dd']),
+    "avg_equity_dd": np.float32(metrics['avg_equity_dd']),
+    "max_price_dd": np.float32(metrics['max_price_dd']),
+    "avg_price_dd": np.float32(metrics['avg_price_dd']),
+    "trades_count": np.int32(metrics['trades_count']),
+    "long_trades": np.int32(metrics['long_trades']),
+    "short_trades": np.int32(metrics['short_trades'])
 }
 
 # Добавляем данные jump если есть
