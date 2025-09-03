@@ -1,6 +1,7 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-09-01 14:57 — правка номер 13
+# Last modified (MSK): 2025-01-03 19:08 — правка номер 14
 # Changes:
+# - правка 14: обновлены параметры (WEIGHT_DECAY=7.5e-5, DEFAULT_DROPOUT=0.25, SAVE_MIN_PR_AUC=0.62, FOCAL_GAMMA=2.4, AUTOTUNE_GAMMA=1.9, ONECYCLE_FINAL_DIV_FACTOR=10.0); добавлена аннотация max val_acc на curves
 # - Added candle count and class imbalance info to both curves and threshold sweep graphs
 # - Info displayed as "{script_name}\n{count} candles, {imbalance%}"
 # - Fixed annotations to match graph curves: avg_price_dd annotations now show price DD values
@@ -67,13 +68,13 @@ CLIP_MIN_FACTOR = 0.8
 CLIP_MAX_FACTOR = 8.0
 ONECYCLE_PCT_START = 0.12
 ONECYCLE_DIV_FACTOR = 20.0
-ONECYCLE_FINAL_DIV_FACTOR = 7.5
-WEIGHT_DECAY = 4.5e-5
-DEFAULT_DROPOUT = 0.35
+ONECYCLE_FINAL_DIV_FACTOR = 10.0
+WEIGHT_DECAY = 7.5e-5
+DEFAULT_DROPOUT = 0.25
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EARLY_STOP_EPOCHS = 80
 NPR_EPS = 1e-12
-SAVE_MIN_PR_AUC = 0.601
+SAVE_MIN_PR_AUC = 0.62
 GRADCLIP_MAXNORM_1_APPLY = True
 GRADCLIP_MAXNORM = 0.9
 USE_STANDARD_SCALER = False
@@ -88,11 +89,11 @@ PNL_VAS_SL_MAX = -0.0001      # -0.01%
 PNL_VAS_SL_STEP = 0.0001      # 0.01%
 
 # Focal Loss params
-FOCAL_GAMMA = 1.5
+FOCAL_GAMMA = 2.4
 
 # Autotune parameters (triggered once when PR_AUC crosses threshold)
-AUTOTUNE_PRAUC_THRESHOLD = 0.601
-AUTOTUNE_GAMMA = 1.35
+AUTOTUNE_PRAUC_THRESHOLD = 0.62
+AUTOTUNE_GAMMA = 1.9
 AUTOTUNE_WD_MULT = 1.0
 AUTOTUNE_BETA1 = 0.8
 AUTOTUNE_APPLY_BETA = True
@@ -501,14 +502,42 @@ try:
             xytext=(x_frac_pnl, 1.12), textcoords='axes fraction',
             ha='center', va='bottom', fontsize=7,
             bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.8))
+    
+    # Add val_acc annotation
+    val_acc_ann = None
+    if len(val_acc_curve) > 0:
+        i_best_val = int(np.nanargmax(val_acc_curve))
+        y_best_val = (val_acc_curve[i_best_val] - np.nanmin(val_acc_curve)) / (np.nanmax(val_acc_curve) - np.nanmin(val_acc_curve) + eps)
+        x_frac_val = (i_best_val + 1) / xlen
+        # show point on curve
+        plt.scatter([i_best_val+1], [y_best_val], color=colors.get('ValAcc', '#ff7f0e'), s=32)
+        val_acc_ann = ax.annotate(
+            f"max ValAcc={val_acc_curve[i_best_val]:.3f} (ep={i_best_val+1})",
+            xy=(i_best_val+1, y_best_val), xycoords='data',
+            xytext=(x_frac_val, 1.18), textcoords='axes fraction',
+            ha='center', va='bottom', fontsize=7,
+            bbox=dict(boxstyle='round,pad=0.15', fc='white', alpha=0.8))
+    
     # simple collision avoidance: if texts too close in x, shift left/right
     try:
-        if pr_ann is not None and pnl_ann is not None:
-            (xpr, ypr) = pr_ann.get_position()
-            (xpn, ypn) = pnl_ann.get_position()
-            if abs(xpr - xpn) < 0.08:
-                pr_ann.set_position((xpr - 0.06, ypr))
-                pnl_ann.set_position((xpn + 0.06, ypn))
+        anns = []
+        if pr_ann is not None: anns.append(pr_ann)
+        if pnl_ann is not None: anns.append(pnl_ann)
+        if val_acc_ann is not None: anns.append(val_acc_ann)
+        
+        if len(anns) >= 2:
+            positions = [(ann.get_position()[0], ann) for ann in anns]
+            positions.sort(key=lambda x: x[0])
+            
+            # Adjust overlapping annotations
+            for i in range(len(positions) - 1):
+                x1, ann1 = positions[i]
+                x2, ann2 = positions[i + 1]
+                if abs(x1 - x2) < 0.08:
+                    y1 = ann1.get_position()[1]
+                    y2 = ann2.get_position()[1]
+                    ann1.set_position((x1 - 0.04, y1))
+                    ann2.set_position((x2 + 0.04, y2))
     except Exception:
         pass
     # constants box (inside axes, bottom-right)
@@ -543,7 +572,7 @@ try:
     try:
         _script_name = Path(__file__).name
     except Exception:
-        _script_name = "price_jump_train_OneCFocalL.py"
+        _script_name = "price_drop_train_OneCFocalL.py"
     # Добавляем информацию о количестве свечей и дисбалансе
     info_text = f"{_script_name}\n{len(df)} candles, {POS_FRAC:.1%}"
     ax.text(0.02, 0.02, info_text, transform=ax.transAxes,
