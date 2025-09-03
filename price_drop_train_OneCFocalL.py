@@ -1,6 +1,7 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-01-03 19:14 — правка номер 15
+# Last modified (MSK): 2025-09-03 20:17 — правка номер 16
 # Changes:
+# - правка 16: изменен PNL_VAS_SL_MIN с -0.006 на -0.015 для расширения диапазона стоп-лосса
 # - правка 15: добавлен вывод FOCAL_GAMMA в блоки констант на обоих графиках
 # - правка 14: обновлены параметры (WEIGHT_DECAY=7.5e-5, DEFAULT_DROPOUT=0.25, SAVE_MIN_PR_AUC=0.62, FOCAL_GAMMA=2.4, AUTOTUNE_GAMMA=1.9, ONECYCLE_FINAL_DIV_FACTOR=10.0); добавлена аннотация max val_acc на curves
 # - Added candle count and class imbalance info to both curves and threshold sweep graphs
@@ -85,7 +86,7 @@ USE_EARLY_STOP = False
 PNL_VAS_THRESH_PCT = 0.0025   # +0.25% above entry open
 PNL_VAS_MAX_HOLD_MIN = 10     # fallback hold minutes if no early exit
 PNL_VAS_SWEEP_THR = 0.55      # fixed threshold for SL sweep
-PNL_VAS_SL_MIN = -0.006       # -0.6%
+PNL_VAS_SL_MIN = -0.015       # -1.5%
 PNL_VAS_SL_MAX = -0.0001      # -0.01%
 PNL_VAS_SL_STEP = 0.0001      # 0.01%
 
