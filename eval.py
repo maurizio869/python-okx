@@ -1,8 +1,9 @@
 # eval.py
-# Last modified (MSK): 2025-01-03 18:54 — правка номер 2
+# Last modified (MSK): 2025-01-03 19:17 — правка номер 3
 # Changes:
 # - правка 1: Создан единый eval скрипт для обеих моделей (jump и drop)
 # - правка 2: Переименован из price_jump_drop_eval_OneCFocalL.py в eval.py
+# - правка 3: Исправлена загрузка модели - параметры архитектуры берутся из checkpoint
 """Единый eval скрипт для jump и drop моделей OneCFocalL"""
 
 from pathlib import Path
@@ -140,8 +141,13 @@ def load_model_and_predict(model_path: Path, df: pd.DataFrame, model_name: str):
     seq_len = int(meta.get("seq_len", SEQ_LEN))
     pred_window = int(meta.get("pred_window", PRED_WINDOW))
     
+    # Параметры архитектуры модели (должны совпадать с train скриптом)
+    hidden_size = int(meta.get("hidden_size", 64))  # По умолчанию как в OneCFocalL
+    num_layers = int(meta.get("num_layers", 2))     # По умолчанию как в OneCFocalL
+    dropout = float(meta.get("dropout", 0.25))      # По умолчанию как в OneCFocalL
+    
     # Создаем модель
-    model = LSTMClassifier(input_size=7, hidden_size=128, num_layers=3, dropout=0.35)
+    model = LSTMClassifier(input_size=7, hidden_size=hidden_size, num_layers=num_layers, dropout=dropout)
     
     # Загружаем веса
     if isinstance(ckpt, dict) and "model_state" in ckpt:
