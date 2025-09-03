@@ -1,6 +1,7 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-01-03 19:08 — правка номер 14
+# Last modified (MSK): 2025-01-03 19:14 — правка номер 15
 # Changes:
+# - правка 15: добавлен вывод FOCAL_GAMMA в блоки констант на обоих графиках
 # - правка 14: обновлены параметры (WEIGHT_DECAY=7.5e-5, DEFAULT_DROPOUT=0.25, SAVE_MIN_PR_AUC=0.62, FOCAL_GAMMA=2.4, AUTOTUNE_GAMMA=1.9, ONECYCLE_FINAL_DIV_FACTOR=10.0); добавлена аннотация max val_acc на curves
 # - Added candle count and class imbalance info to both curves and threshold sweep graphs
 # - Info displayed as "{script_name}\n{count} candles, {imbalance%}"
@@ -546,7 +547,7 @@ try:
         f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
         f"pct_start={ONECYCLE_PCT_START}\ndiv_factor={ONECYCLE_DIV_FACTOR}\nfinal_div={ONECYCLE_FINAL_DIV_FACTOR}\n"
         f"WD={WEIGHT_DECAY}\nDROPOUT={DEFAULT_DROPOUT:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}"
-        f"\nauto_thr={AUTOTUNE_PRAUC_THRESHOLD}\nauto_gamma={AUTOTUNE_GAMMA}\nauto_WD×{AUTOTUNE_WD_MULT}"
+        f"\nfocal_gamma={FOCAL_GAMMA}\nauto_thr={AUTOTUNE_PRAUC_THRESHOLD}\nauto_gamma={AUTOTUNE_GAMMA}\nauto_WD×{AUTOTUNE_WD_MULT}"
         f"\nauto_beta1={AUTOTUNE_BETA1}\nAPPLY_BETA={AUTOTUNE_APPLY_BETA}"
         f"\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}\nbest_lr_default={best_lr_default:.2e}"
     )
@@ -828,7 +829,7 @@ try:
                   f"EPOCHS={EPOCHS}\nBATCH={BATCH_SIZE}\nBASE_LR={BASE_LR:.2e}\n"
                   f"pct_start={ONECYCLE_PCT_START}\ndiv_factor={ONECYCLE_DIV_FACTOR}\nfinal_div={ONECYCLE_FINAL_DIV_FACTOR}\n"
                   f"WD={WEIGHT_DECAY}\nDROPOUT={DEFAULT_DROPOUT:.3f}\nBEST_LR_MULT={BEST_LR_MULTIPLIER}"
-                  f"\nauto_thr={AUTOTUNE_PRAUC_THRESHOLD}\nauto_gamma={AUTOTUNE_GAMMA}\nauto_WD×{AUTOTUNE_WD_MULT}\nauto_beta1={AUTOTUNE_BETA1}\nAPPLY_BETA={AUTOTUNE_APPLY_BETA}\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}\nbest_lr_default={best_lr_default:.2e}")
+                  f"\nfocal_gamma={FOCAL_GAMMA}\nauto_thr={AUTOTUNE_PRAUC_THRESHOLD}\nauto_gamma={AUTOTUNE_GAMMA}\nauto_WD×{AUTOTUNE_WD_MULT}\nauto_beta1={AUTOTUNE_BETA1}\nAPPLY_BETA={AUTOTUNE_APPLY_BETA}\nUSE_STANDARD_SCALER={USE_STANDARD_SCALER}\nGRADCLIP={GRADCLIP_MAXNORM_1_APPLY}\nGRADCLIP_MAXNORM={GRADCLIP_MAXNORM}\nbest_lr_default={best_lr_default:.2e}")
     try:
         fig.canvas.draw()
         ax_pos = ax1.get_position()
