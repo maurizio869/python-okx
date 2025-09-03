@@ -1,5 +1,5 @@
 # eval.py
-# Last modified (MSK): 2025-09-03 22:45 — правка номер 9
+# Last modified (MSK): 2025-09-03 23:05 — правка номер 10
 # Changes:
 # - правка 1: Создан единый eval скрипт для обеих моделей (jump и drop)
 # - правка 2: Переименован из price_jump_drop_eval_OneCFocalL.py в eval.py
@@ -10,6 +10,7 @@
 # - правка 7: Переименована метрика PnL VAS в PnL VAS2 (двойная стратегия)
 # - правка 8: Изменена логика body_smaller для SHORT: (close_j - open_j) > (close_prev - open_prev)
 # - правка 9: Установлены константы порогов: CONSTANT_JUMP_THRESHOLD=0.64, CONSTANT_DROP_THRESHOLD=0.75
+# - правка 10: Изменен CONSTANT_JUMP_THRESHOLD с 0.64 на 0.82
 """Единый eval скрипт для jump и drop моделей OneCFocalL"""
 
 from pathlib import Path
@@ -43,7 +44,7 @@ DROP_THRESHOLD = 0.0035
 
 # Флаг для использования фиксированных порогов
 USE_CONSTANT_THRESHOLD = False
-CONSTANT_JUMP_THRESHOLD = 0.64
+CONSTANT_JUMP_THRESHOLD = 0.82
 CONSTANT_DROP_THRESHOLD = 0.75
 
 # PnL_VAS parameters (sequential, dynamic exit)
