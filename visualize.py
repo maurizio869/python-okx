@@ -1,9 +1,10 @@
 # visualize.py
-# Last modified (MSK): 2025-09-03 21:13 — правка номер 3
+# Last modified (MSK): 2025-09-03 21:20 — правка номер 4
 # Changes:
 # - правка 1: Добавлена поддержка отображения jump (синие) и drop (оранжевые) предсказаний
 # - правка 2: Переименован из price_jump_visualize.py в visualize.py
 # - правка 3: Добавлена визуализация сделок PnL VAS (зеленые прямоугольники для LONG, красные для SHORT) и аннотация с результатом
+# - правка 4: Переименована метрика PnL VAS в PnL VAS2 (двойная стратегия)
 """Загружает файл viz_data.npz и строит свечной график с отметками 
 прогнозируемых скачков (синие линии снизу) и падений (оранжевые линии сверху).
 """
@@ -103,14 +104,14 @@ if drop_dates:
         price_ax.vlines(vd, bottom_y, y_max,
                         colors="orange", linewidth=1.2, alpha=0.8)
 
-# Визуализация сделок PnL VAS если есть
+# Визуализация сделок PnL VAS2 если есть
 if "trades" in npz.files:
     trades = npz["trades"]
     if hasattr(trades, 'tolist'):
         trades = trades.tolist()  # Конвертируем из numpy если нужно
     
     if trades:
-        print(f"\nВизуализация {len(trades)} сделок PnL VAS")
+        print(f"\nВизуализация {len(trades)} сделок PnL VAS2")
         
         for trade in trades:
             entry_idx = trade['entry_idx']
@@ -149,13 +150,13 @@ if "trades" in npz.files:
                                linewidth=0, facecolor=color, alpha=alpha)
                 price_ax.add_patch(rect)
 
-# Добавляем аннотацию с PnL VAS под графиком
-if "pnl_vas" in npz.files:
-    pnl_vas = float(npz["pnl_vas"])
-    stop_loss = float(npz["pnl_vas_stop_loss"])
+# Добавляем аннотацию с PnL VAS2 под графиком
+if "pnl_vas2" in npz.files:
+    pnl_vas2 = float(npz["pnl_vas2"])
+    stop_loss = float(npz["pnl_vas2_stop_loss"])
     
     # Получаем позицию для аннотации
-    fig_text = f"PnL VAS: {pnl_vas:.2f}% (стоп-лосс: {stop_loss*100:.2f}%)"
+    fig_text = f"PnL VAS2: {pnl_vas2:.2f}% (стоп-лосс: {stop_loss*100:.2f}%)"
     
     # Добавляем текст под графиком
     fig.text(0.5, 0.01, fig_text, 

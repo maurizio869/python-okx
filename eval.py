@@ -1,5 +1,5 @@
 # eval.py
-# Last modified (MSK): 2025-09-03 21:13 — правка номер 6
+# Last modified (MSK): 2025-09-03 21:20 — правка номер 7
 # Changes:
 # - правка 1: Создан единый eval скрипт для обеих моделей (jump и drop)
 # - правка 2: Переименован из price_jump_drop_eval_OneCFocalL.py в eval.py
@@ -7,6 +7,7 @@
 # - правка 4: Исправлены дата и время в шапке на правильные из системы Linux
 # - правка 5: Добавлен флаг USE_CONSTANT_THRESHOLD для использования фиксированных порогов вместо подбираемых
 # - правка 6: Добавлен расчет PnL VAS для комбинированных сигналов jump и drop с сохранением сделок для визуализации
+# - правка 7: Переименована метрика PnL VAS в PnL VAS2 (двойная стратегия)
 """Единый eval скрипт для jump и drop моделей OneCFocalL"""
 
 from pathlib import Path
@@ -258,12 +259,12 @@ probs_drop, preds_drop, threshold_drop = load_model_and_predict(
     DROP_MODEL_PATH, df, "Drop"
 )
 
-# ─── РАСЧЕТ PNL VAS ─────────────────────────────────────────────
+# ─── РАСЧЕТ PNL VAS2 ─────────────────────────────────────────────
 print("\n" + "=" * 60)
-print("📈 Расчет PnL VAS для комбинированных сигналов")
+print("📈 Расчет PnL VAS2 для комбинированных сигналов")
 
-def calculate_pnl_vas(df, preds_jump, preds_drop, threshold_jump, threshold_drop, stop_loss_pct):
-    """Расчет PnL VAS для комбинированных LONG и SHORT сигналов"""
+def calculate_pnl_vas2(df, preds_jump, preds_drop, threshold_jump, threshold_drop, stop_loss_pct):
+    """Расчет PnL VAS2 для комбинированных LONG и SHORT сигналов"""
     
     trades = []  # Список всех сделок для визуализации
     equity = 1.0
@@ -390,20 +391,20 @@ def calculate_pnl_vas(df, preds_jump, preds_drop, threshold_jump, threshold_drop
 if preds_jump is not None or preds_drop is not None:
     sl_values = np.arange(PNL_VAS_SL_MIN, PNL_VAS_SL_MAX + 1e-12, PNL_VAS_SL_STEP)
     best_sl = PNL_VAS_SL_MIN
-    best_pnl_vas = -np.inf
+    best_pnl_vas2 = -np.inf
     best_trades = []
     
     print(f"Подбор стоп-лосса из {len(sl_values)} вариантов...")
     for sl in sl_values:
-        pnl_here, trades_here = calculate_pnl_vas(df, preds_jump, preds_drop, 
-                                                  threshold_jump, threshold_drop, float(sl))
-        if pnl_here > best_pnl_vas:
-            best_pnl_vas = pnl_here
+        pnl_here, trades_here = calculate_pnl_vas2(df, preds_jump, preds_drop, 
+                                                   threshold_jump, threshold_drop, float(sl))
+        if pnl_here > best_pnl_vas2:
+            best_pnl_vas2 = pnl_here
             best_sl = float(sl)
             best_trades = trades_here
     
     print(f"✅ Выбран стоп-лосс: {best_sl*100:.2f}%")
-    print(f"📊 PnL VAS (compound): {best_pnl_vas:.2f}%")
+    print(f"📊 PnL VAS2 (compound): {best_pnl_vas2:.2f}%")
     print(f"📝 Количество сделок: {len(best_trades)}")
     if best_trades:
         long_trades = [t for t in best_trades if t['type'] == 'long']
@@ -411,7 +412,7 @@ if preds_jump is not None or preds_drop is not None:
         print(f"   - LONG сделок: {len(long_trades)}")
         print(f"   - SHORT сделок: {len(short_trades)}")
 else:
-    best_pnl_vas = 0.0
+    best_pnl_vas2 = 0.0
     best_sl = PNL_VAS_SL_MIN
     best_trades = []
 
@@ -430,9 +431,9 @@ save_data = {
     "use_maker_fees": np.bool_(USE_MAKER_FEES),
     "entry_fee": np.float32(ENTRY_FEE),
     "exit_fee": np.float32(EXIT_FEE),
-    # PnL VAS данные
-    "pnl_vas": np.float32(best_pnl_vas),
-    "pnl_vas_stop_loss": np.float32(best_sl),
+    # PnL VAS2 данные
+    "pnl_vas2": np.float32(best_pnl_vas2),
+    "pnl_vas2_stop_loss": np.float32(best_sl),
     "trades": best_trades,  # Список сделок для визуализации
 }
 
