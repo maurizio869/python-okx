@@ -1,10 +1,11 @@
 # visualize.py
-# Last modified (MSK): 2025-09-03 21:20 — правка номер 4
+# Last modified (MSK): 2025-09-03 21:32 — правка номер 5
 # Changes:
 # - правка 1: Добавлена поддержка отображения jump (синие) и drop (оранжевые) предсказаний
 # - правка 2: Переименован из price_jump_visualize.py в visualize.py
 # - правка 3: Добавлена визуализация сделок PnL VAS (зеленые прямоугольники для LONG, красные для SHORT) и аннотация с результатом
 # - правка 4: Переименована метрика PnL VAS в PnL VAS2 (двойная стратегия)
+# - правка 5: Добавлен allow_pickle=True для загрузки trades (object array)
 """Загружает файл viz_data.npz и строит свечной график с отметками 
 прогнозируемых скачков (синие линии снизу) и падений (оранжевые линии сверху).
 """
@@ -19,7 +20,7 @@ DATA_FILE = Path("viz_data.npz")   # путь к файлу с сохранён�
 # ───────────────────────────────────────────────────────────────────
 
 print("Читаем", DATA_FILE)
-npz = np.load(DATA_FILE)
+npz = np.load(DATA_FILE, allow_pickle=True)
 
 # Восстанавливаем DataFrame
 idx = pd.to_datetime(npz["index"], utc=True)
@@ -61,7 +62,8 @@ else:
 dfp = df.rename(columns={"o": "Open", "h": "High", "l": "Low", "c": "Close", "v": "Volume"})
 
 kw = dict(type="candle", style="charles", volume=True,
-          show_nontrading=True, datetime_format="%m-%d %H:%M", xrotation=15)
+          show_nontrading=True, datetime_format="%m-%d %H:%M", xrotation=15,
+          warn_too_much_data=10000)
 
 # Сохраняем даты без таймзоны для последующего рисования
 jump_dates = list(jumps.index.tz_localize(None)) if not jumps.empty else []
