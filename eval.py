@@ -1,5 +1,5 @@
 # eval.py
-# Last modified (MSK): 2025-09-03 23:40 — правка номер 12
+# Last modified (MSK): 2025-09-04 09:53 — правка номер 13
 # Changes:
 # - правка 1: Создан единый eval скрипт для обеих моделей (jump и drop)
 # - правка 2: Переименован из price_jump_drop_eval_OneCFocalL.py в eval.py
@@ -13,6 +13,7 @@
 # - правка 10: Изменен CONSTANT_JUMP_THRESHOLD с 0.64 на 0.82
 # - правка 11: Добавлено условие удержания позиции при наличии подтверждающего сигнала того же направления
 # - правка 12: Добавлен расчет всех метрик (как в train) и улучшена визуализация сделок с отображением комиссий
+# - правка 13: Исправлен расчет Sharpe ratio для минутных сделок - заменен sqrt(252) на sqrt(252 * 24 * 60)
 """Единый eval скрипт для jump и drop моделей OneCFocalL"""
 
 from pathlib import Path
@@ -446,9 +447,9 @@ if best_trades:
     metrics['mean_ret'] = np.mean(pnls) * 100 if pnls else 0
     metrics['median_ret'] = np.median(pnls) * 100 if pnls else 0
     
-    # Sharpe ratio (предполагаем дневную торговлю)
+    # Sharpe ratio (для минутных сделок)
     if len(pnls) > 1:
-        metrics['sharpe'] = np.mean(pnls) / np.std(pnls) * np.sqrt(252) if np.std(pnls) > 0 else 0
+        metrics['sharpe'] = np.mean(pnls) / np.std(pnls) * np.sqrt(252 * 24 * 60) if np.std(pnls) > 0 else 0
     else:
         metrics['sharpe'] = 0
     
