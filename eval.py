@@ -1,5 +1,5 @@
 # eval.py
-# Last modified (MSK): 2025-09-04 09:53 — правка номер 13
+# Last modified (MSK): 2025-09-04 13:35 — правка номер 14
 # Changes:
 # - правка 1: Создан единый eval скрипт для обеих моделей (jump и drop)
 # - правка 2: Переименован из price_jump_drop_eval_OneCFocalL.py в eval.py
@@ -14,6 +14,7 @@
 # - правка 11: Добавлено условие удержания позиции при наличии подтверждающего сигнала того же направления
 # - правка 12: Добавлен расчет всех метрик (как в train) и улучшена визуализация сделок с отображением комиссий
 # - правка 13: Исправлен расчет Sharpe ratio для минутных сделок - заменен sqrt(252) на sqrt(252 * 24 * 60)
+# - правка 14: Добавлен выход по противоположному сигналу в PnL VAS2
 """Единый eval скрипт для jump и drop моделей OneCFocalL"""
 
 from pathlib import Path
@@ -318,6 +319,14 @@ def calculate_pnl_vas2(df, preds_jump, preds_drop, threshold_jump, threshold_dro
         for k in range(1, max_hold + 1):
             j = entry_idx + k
             if j >= len(opens):
+                break
+            
+            # Выход по противоположному сигналу
+            if signal_type == 'long' and j in drop_indices:
+                exit_idx = j
+                break
+            elif signal_type == 'short' and j in jump_indices:
+                exit_idx = j
                 break
                 
             if signal_type == 'long':
