@@ -1,7 +1,8 @@
 # price_jump_train_OneCFocalL.py
-# Last modified (MSK): 2025-09-03 20:17 — правка номер 26
+# Last modified (MSK): 2025-09-04 15:22 — правка номер 27
 # Changes:
 # - правка 26: изменен PNL_VAS_SL_MIN с -0.006 на -0.015 для расширения диапазона стоп-лосса
+# - правка 27: обновлены параметры (WEIGHT_DECAY=4.5e-5, DEFAULT_DROPOUT=0.35, FOCAL_GAMMA=1.5)
 # - правка 25: добавлен вывод FOCAL_GAMMA в блоки констант на обоих графиках
 # - правка 24: обновлены параметры (WEIGHT_DECAY=7.5e-5, DEFAULT_DROPOUT=0.25, SAVE_MIN_PR_AUC=0.62, FOCAL_GAMMA=2.4, AUTOTUNE_GAMMA=1.9); добавлена аннотация max val_acc на curves
 # - Added candle count and class imbalance info to both curves and threshold sweep graphs
@@ -86,8 +87,8 @@ CLIP_MAX_FACTOR = 8.0
 ONECYCLE_PCT_START = 0.12
 ONECYCLE_DIV_FACTOR = 20.0
 ONECYCLE_FINAL_DIV_FACTOR = 10
-WEIGHT_DECAY = 7.5e-5
-DEFAULT_DROPOUT = 0.25
+WEIGHT_DECAY = 4.5e-5
+DEFAULT_DROPOUT = 0.35
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 EARLY_STOP_EPOCHS = 80
 NPR_EPS = 1e-12
@@ -106,7 +107,7 @@ PNL_VAS_SL_MAX = -0.0001      # -0.01%
 PNL_VAS_SL_STEP = 0.0001      # 0.01%
 
 # Focal Loss params
-FOCAL_GAMMA = 2.4
+FOCAL_GAMMA = 1.5
 
 # Autotune parameters (triggered once when PR_AUC crosses threshold)
 AUTOTUNE_PRAUC_THRESHOLD = 0.62
