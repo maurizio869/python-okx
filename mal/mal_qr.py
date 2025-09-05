@@ -1,4 +1,4 @@
-# Last modified (MSK): 2025-09-05 15:20 — правка номер 1
+# Last modified (MSK): 2025-09-05 15:26 — правка номер 2
 import requests
 import time
 import hmac
@@ -26,11 +26,15 @@ def place_futures_order():
         "timeInForce": "IOC"
     }
 
-    # Создание подписи
+    # Создание подписи согласно BingX API документации
     timestamp = str(int(time.time() * 1000))
-    query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+    
+    # Сортируем параметры по ключу и создаем query string
+    sorted_params = sorted(params.items())
+    query_string = "&".join([f"{k}={v}" for k, v in sorted_params])
     query_string += f"&timestamp={timestamp}"
-
+    
+    # Генерируем подпись: HMAC-SHA256(query_string, secret_key)
     signature = hmac.new(
         api_secret.encode('utf-8'),
         query_string.encode('utf-8'),
