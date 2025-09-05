@@ -3,9 +3,12 @@ import time
 import hmac
 import hashlib
 
-def place_futures_order():
-    api_key = "ваш_api_ключ"
-    api_secret = "ваш_api_секрет"
+def test_api_connection():
+    """Тест подключения к API без реальных ключей"""
+    
+    # Тестовые данные
+    api_key = "test_key"
+    api_secret = "test_secret"
     
     # Параметры ордера
     params = {
@@ -23,13 +26,17 @@ def place_futures_order():
     query_string = "&".join([f"{k}={v}" for k, v in params.items()])
     query_string += f"&timestamp={timestamp}"
     
+    print(f"Query String: {query_string}")
+    
     signature = hmac.new(
         api_secret.encode('utf-8'),
         query_string.encode('utf-8'),
         hashlib.sha256
     ).hexdigest()
     
-    # Заголовки (только ASCII символы)
+    print(f"Signature: {signature}")
+    
+    # Заголовки
     headers = {
         "X-BX-APIKEY": api_key,
         "X-BX-SIGNATURE": signature,
@@ -37,8 +44,10 @@ def place_futures_order():
         "Content-Type": "application/json"
     }
     
+    print(f"Headers: {headers}")
+    
     try:
-        # Отправка запроса
+        # Тест подключения
         response = requests.post(
             "https://open-api.bingx.com/openApi/swap/v2/trade/order",
             json=params,
@@ -47,7 +56,8 @@ def place_futures_order():
         )
         
         print(f"Status Code: {response.status_code}")
-        print(f"Response: {response.text}")
+        print(f"Response Headers: {dict(response.headers)}")
+        print(f"Response Text: {response.text}")
         
         return response.json()
         
@@ -58,8 +68,7 @@ def place_futures_order():
         print(f"General Error: {e}")
         return {"error": str(e)}
 
-# Тестируем функцию
 if __name__ == "__main__":
-    print("Запуск теста API...")
-    result = place_futures_order()
+    print("Тест API подключения...")
+    result = test_api_connection()
     print(f"Результат: {result}")
