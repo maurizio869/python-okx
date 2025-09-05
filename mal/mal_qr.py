@@ -1,34 +1,42 @@
+# Last modified (MSK): 2025-09-05 15:20 — правка номер 1
 import requests
 import time
 import hmac
 import hashlib
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+# путь к .env: та же папка, где лежит текущий файл
+dotenv_path = Path(__file__).resolve().parent / '.env'
+load_dotenv(dotenv_path)           # <-- читаем файл
 
 def place_futures_order():
-    api_key = "ваш_api_ключ"
-    api_secret = "ваш_api_секрет"
     
+    api_key = os.getenv('api_key1', '1')
+    api_secret = os.getenv('api_secret1', '1')
+
     # Параметры ордера
     params = {
         "symbol": "HBAR-USDT",
-        "side": "BUY",
+        "side": "SELL",
         "type": "MARKET", 
-        "quantity": "100",
-        "leverage": "5",
-        "positionSide": "LONG",
+        "quantity": "3",
+        "leverage": "10",
+        "positionSide": "SHORT",
         "timeInForce": "IOC"
     }
-    
+
     # Создание подписи
     timestamp = str(int(time.time() * 1000))
     query_string = "&".join([f"{k}={v}" for k, v in params.items()])
     query_string += f"&timestamp={timestamp}"
-    
+
     signature = hmac.new(
         api_secret.encode('utf-8'),
         query_string.encode('utf-8'),
         hashlib.sha256
     ).hexdigest()
-    
+
     # Заголовки (только ASCII символы)
     headers = {
         "X-BX-APIKEY": api_key,
@@ -36,7 +44,7 @@ def place_futures_order():
         "X-BX-TIMESTAMP": timestamp,
         "Content-Type": "application/json"
     }
-    
+
     try:
         # Отправка запроса
         response = requests.post(
@@ -45,12 +53,12 @@ def place_futures_order():
             headers=headers,
             timeout=10
         )
-        
+
         print(f"Status Code: {response.status_code}")
         print(f"Response: {response.text}")
-        
+
         return response.json()
-        
+
     except requests.exceptions.RequestException as e:
         print(f"Request Error: {e}")
         return {"error": str(e)}
