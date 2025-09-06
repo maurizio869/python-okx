@@ -1,4 +1,4 @@
-# Last modified (MSK): 2025-09-06 10:15:19 MSK — правка номер 6
+# Last modified (MSK): 2025-09-06 10:36:02 MSK — правка номер 7
 import requests
 import time
 import hmac
@@ -120,7 +120,7 @@ def place_futures_order():
         # Отправка запроса
         response = requests.post(
             "https://open-api.bingx.com/openApi/swap/v2/trade/order",
-            json=params,
+            data=json_body,  # отправляем именно подписанный компактный JSON
             headers=headers,
             timeout=10
         )
