@@ -1,4 +1,4 @@
-# Last modified (MSK): 2025-09-06 10:36:02 MSK — правка номер 7
+# Last modified (MSK): 2025-09-06 10:47:12 MSK — правка номер 8
 import requests
 import time
 import hmac
@@ -15,27 +15,51 @@ load_dotenv(dotenv_path)           # <-- читаем файл
 api_key = os.getenv('api_key1', '1')
 api_secret = os.getenv('api_secret1', '1')
 
+# Переключаемые режимы подписи и заголовков
+SIGN_MODE = os.getenv('BINGX_SIGN_MODE', 'METHOD_PATH_TS_BODY')  # METHOD_PATH_TS_BODY | TS_PATH_BODY | TS_BODY
+ALT_HEADER = os.getenv('BINGX_ALT_HEADER', '0')  # если '1', добавлять X-BX-API-KEY
+
+def _build_signature(method: str, path: str, timestamp: str, body_json: str) -> str:
+    method = method.upper()
+    if SIGN_MODE == 'METHOD_PATH_TS_BODY':
+        base = method + path + timestamp + body_json
+    elif SIGN_MODE == 'TS_PATH_BODY':
+        base = timestamp + path + body_json
+    else:  # TS_BODY (по умолчанию раньше было timestamp+json)
+        base = timestamp + body_json
+    return hmac.new(api_secret.encode('utf-8'), base.encode('utf-8'), hashlib.sha256).hexdigest()
+
 def _signed_post(path, body: dict):
     ts = str(int(time.time() * 1000))
     jb = json.dumps(body, separators=(',', ':'))
-    sig = hmac.new(api_secret.encode('utf-8'), (ts + jb).encode('utf-8'), hashlib.sha256).hexdigest()
+    sig = _build_signature('POST', path, ts, jb)
     hdr = {
         "X-BX-APIKEY": api_key,
         "X-BX-SIGNATURE": sig,
         "X-BX-TIMESTAMP": ts,
         "Content-Type": "application/json"
     }
+    if ALT_HEADER == '1':
+        hdr["X-BX-API-KEY"] = api_key
+    # Отладка
+    print(f"DBG POST path={path} ts={ts} sign_mode={SIGN_MODE} alt_header={ALT_HEADER}")
+    print(f"DBG POST string_signed={('POST'+path+ts+jb) if SIGN_MODE=='METHOD_PATH_TS_BODY' else (ts+path+jb) if SIGN_MODE=='TS_PATH_BODY' else (ts+jb)}")
     return requests.post(f"https://open-api.bingx.com{path}", data=jb, headers=hdr, timeout=10)
 
 def _signed_get(path: str):
     ts = str(int(time.time() * 1000))
-    sig = hmac.new(api_secret.encode('utf-8'), (ts + '').encode('utf-8'), hashlib.sha256).hexdigest()
+    jb = ''
+    sig = _build_signature('GET', path, ts, jb)
     hdr = {
         "X-BX-APIKEY": api_key,
         "X-BX-SIGNATURE": sig,
         "X-BX-TIMESTAMP": ts,
         "Content-Type": "application/json"
     }
+    if ALT_HEADER == '1':
+        hdr["X-BX-API-KEY"] = api_key
+    print(f"DBG GET path={path} ts={ts} sign_mode={SIGN_MODE} alt_header={ALT_HEADER}")
+    print(f"DBG GET string_signed={('GET'+path+ts+jb) if SIGN_MODE=='METHOD_PATH_TS_BODY' else (ts+path+jb) if SIGN_MODE=='TS_PATH_BODY' else (ts+jb)}")
     return requests.get(f"https://open-api.bingx.com{path}", headers=hdr, timeout=10)
 
 def get_position_mode():
@@ -100,11 +124,7 @@ def place_futures_order():
     timestamp = str(int(time.time() * 1000))
     
     json_body = json.dumps(params, separators=(',', ':'))
-    signature = hmac.new(
-        api_secret.encode('utf-8'),
-        (timestamp + json_body).encode('utf-8'),
-        hashlib.sha256
-    ).hexdigest()
+    signature = _build_signature('POST', '/openApi/swap/v2/trade/order', timestamp, json_body)
     print(f"Timestamp: {timestamp}")
 
     # Заголовки (только ASCII символы)
@@ -120,7 +140,7 @@ def place_futures_order():
         # Отправка запроса
         response = requests.post(
             "https://open-api.bingx.com/openApi/swap/v2/trade/order",
-            data=json_body,  # отправляем именно подписанный компактный JSON
+            data=json_body,
             headers=headers,
             timeout=10
         )
