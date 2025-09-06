@@ -1,4 +1,4 @@
-# Last modified (MSK): 2025-09-06 07:43 — правка номер 3
+# Last modified (MSK): 2025-09-06 08:45 — правка номер 4
 import requests
 import time
 import hmac
@@ -29,19 +29,27 @@ def place_futures_order():
     # Создание подписи согласно BingX API документации
     timestamp = str(int(time.time() * 1000))
     
-    # Для POST запросов с JSON телом подпись генерируется из JSON строки
+    # Для POST запросов с JSON телом подпись генерируется из query string
     import json
-    json_body = json.dumps(params, separators=(',', ':'))
+    # Создаем query string из параметров + timestamp
+    query_params = params.copy()
+    query_params['timestamp'] = timestamp
     
-    # Создаем строку для подписи: timestamp + json_body
-    signature_string = timestamp + json_body
+    # Сортируем параметры по ключу
+    sorted_params = sorted(query_params.items())
+    query_string = "&".join([f"{k}={v}" for k, v in sorted_params])
     
-    # Генерируем подпись: HMAC-SHA256(timestamp + json_body, secret_key)
+    # Генерируем подпись: HMAC-SHA256(query_string, secret_key)
     signature = hmac.new(
         api_secret.encode('utf-8'),
-        signature_string.encode('utf-8'),
+        query_string.encode('utf-8'),
         hashlib.sha256
     ).hexdigest()
+    
+    # Отладочная информация
+    print(f"Query String: {query_string}")
+    print(f"Signature: {signature}")
+    print(f"Timestamp: {timestamp}")
 
     # Заголовки (только ASCII символы)
     headers = {
