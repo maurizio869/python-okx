@@ -1,9 +1,10 @@
 # price_drop_train_OneCFocalL.py
-# Last modified (MSK): 2025-09-04 15:22 — правка номер 18
+# Last modified (MSK): 2025-09-06 09:20 — правка номер 19
 # Changes:
 # - правка 16: изменен PNL_VAS_SL_MIN с -0.006 на -0.015 для расширения диапазона стоп-лосса
 # - правка 17: изменена логика body_smaller для SHORT в PnL VAS: (close_j - open_j) > (close_prev - open_prev)
 # - правка 18: обновлены параметры (WEIGHT_DECAY=4.5e-5, DEFAULT_DROPOUT=0.35, FOCAL_GAMMA=1.5, ONECYCLE_FINAL_DIV_FACTOR=7.5)
+# - правка 19: добавлены ALPHA_NEG, ALPHA_POS константы и увеличен FOCAL_GAMMA до 2.5 для дисбаланса 9.7%
 # - правка 15: добавлен вывод FOCAL_GAMMA в блоки констант на обоих графиках
 # - правка 14: обновлены параметры (WEIGHT_DECAY=7.5e-5, DEFAULT_DROPOUT=0.25, SAVE_MIN_PR_AUC=0.62, FOCAL_GAMMA=2.4, AUTOTUNE_GAMMA=1.9, ONECYCLE_FINAL_DIV_FACTOR=10.0); добавлена аннотация max val_acc на curves
 # - Added candle count and class imbalance info to both curves and threshold sweep graphs
@@ -93,7 +94,8 @@ PNL_VAS_SL_MAX = -0.0001      # -0.01%
 PNL_VAS_SL_STEP = 0.0001      # 0.01%
 
 # Focal Loss params
-FOCAL_GAMMA = 1.5
+FOCAL_GAMMA = 2.5
+ALPHA_NEG, ALPHA_POS = 0.25, 0.75
 
 # Autotune parameters (triggered once when PR_AUC crosses threshold)
 AUTOTUNE_PRAUC_THRESHOLD = 0.62
