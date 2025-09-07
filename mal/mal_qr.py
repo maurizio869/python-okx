@@ -1,4 +1,4 @@
-# Last modified (MSK): 2025-09-07 16:35:22 MSK — правка номер 14
+# Last modified (MSK): 2025-09-07 16:45:17 MSK — правка номер 15
 import requests
 import time
 import hmac
@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 import json
+import base64
 
 # путь к .env: та же папка, где лежит текущий файл
 dotenv_path = Path(__file__).resolve().parent / '.env'
@@ -181,7 +182,6 @@ def set_leverage(symbol: str, position_side: str, leverage: int | str) -> None:
     raise RuntimeError(f"Установка плеча не удалась: {last}")
 
 def place_futures_order() -> dict:
-    # Параметры ордера
     params = {
         "symbol": "HBAR-USDT",
         "side": "SELL",
@@ -189,51 +189,68 @@ def place_futures_order() -> dict:
         "quantity": "3",
         "positionSide": "SHORT"
     }
-
-    # Автоподбор режима подписи
     _sync_server_time()
-    json_body = json.dumps(params, separators=(',', ':'))
     modes_order = ['TS_BODY', 'TS_PATH_BODY', 'METHOD_PATH_TS_BODY']
-
+    header_keys = ['X-BX-SIGNATURE', 'X-BX-SIGN']
+    content_types = ['application/json', 'application/json;charset=UTF-8']
+    sign_formats = ['hex', 'hex_upper', 'base64']
     response = None
     last_exc = None
     last_timestamp = ''
-
     for mode in modes_order:
-        ts = _now_ms_str()
-        last_timestamp = ts
-        sig = _build_signature(mode, 'POST', '/openApi/swap/v2/trade/order', ts, json_body)
-        headers = {
-            'X-BX-APIKEY': api_key,
-            'X-BX-API-KEY': api_key,
-            'X-BX-SIGNATURE': sig,
-            'X-BX-TIMESTAMP': ts,
-            'Content-Type': 'application/json'
-        }
-        print(f"DBG ORDER try mode={mode} ts={ts}")
-        print("DBG ORDER string_signed=" + _signed_string(mode, 'POST', '/openApi/swap/v2/trade/order', ts, json_body))
-        for attempt in range(3):
-            try:
-                response = requests.post(f"{BASE_URL}/openApi/swap/v2/trade/order", data=json_body, headers=headers, timeout=TIMEOUT)
-                break
-            except requests.exceptions.RequestException as e:
-                last_exc = e
-                print(f"WARN order post attempt={attempt} error={e}")
-                time.sleep(0.7 * (attempt + 1))
-        if response is None:
-            continue
-        try:
-            data = response.json()
-        except Exception:
-            data = None
-        code = data.get('code') if isinstance(data, dict) else None
-        if response.status_code == 200 and code not in (100412, 100400):
-            print(f"DBG ORDER accepted mode={mode} http={response.status_code} code={code}")
-            break
-        else:
-            msg = (data.get('msg') if isinstance(data, dict) else str(response.text))
-            print(f"DBG ORDER reject mode={mode} http={response.status_code} code={code} msg={str(msg)[:300]}")
-
+        for sign_format in sign_formats:
+            ts = _now_ms_str()
+            last_timestamp = ts
+            body_params = dict(params)
+            body_params['timestamp'] = ts
+            json_body = json.dumps(body_params, separators=(',', ':'))
+            base_string = _signed_string(mode, 'POST', '/openApi/swap/v2/trade/order', ts, json_body)
+            digest = hmac.new(api_secret.encode('utf-8'), base_string.encode('utf-8'), hashlib.sha256).digest()
+            if sign_format == 'hex':
+                sig_val = digest.hex()
+            elif sign_format == 'hex_upper':
+                sig_val = digest.hex().upper()
+            else:
+                sig_val = base64.b64encode(digest).decode()
+            for sig_header in header_keys:
+                for ctype in content_types:
+                    headers = {
+                        'X-BX-APIKEY': api_key,
+                        'X-BX-API-KEY': api_key,
+                        sig_header: sig_val,
+                        'X-BX-TIMESTAMP': ts,
+                        'Content-Type': ctype
+                    }
+                    print(f"DBG ORDER try mode={mode} fmt={sign_format} hdr={sig_header} ctype={ctype} ts={ts}")
+                    print("DBG ORDER string_signed=" + base_string)
+                    response = None
+                    for attempt in range(2):
+                        try:
+                            response = requests.post(f"{BASE_URL}/openApi/swap/v2/trade/order", data=json_body, headers=headers, timeout=TIMEOUT)
+                            break
+                        except requests.exceptions.RequestException as e:
+                            last_exc = e
+                            print(f"WARN order post attempt={attempt} error={e}")
+                            time.sleep(0.5 * (attempt + 1))
+                    if response is None:
+                        continue
+                    try:
+                        data = response.json()
+                    except Exception:
+                        data = None
+                    code = data.get('code') if isinstance(data, dict) else None
+                    if response.status_code == 200 and code not in (100412, 100400):
+                        print(f"DBG ORDER accepted mode={mode} fmt={sign_format} hdr={sig_header} ctype={ctype} http={response.status_code} code={code}")
+                        print(f"Timestamp: {ts}")
+                        print(f"Status Code: {response.status_code}")
+                        print(f"Response: {response.text}")
+                        try:
+                            return response.json()
+                        except Exception:
+                            return {"raw": response.text}
+                    else:
+                        msg = (data.get('msg') if isinstance(data, dict) else str(response.text))
+                        print(f"DBG ORDER reject mode={mode} fmt={sign_format} hdr={sig_header} ctype={ctype} http={response.status_code} code={code} msg={str(msg)[:300]}")
     print(f"Timestamp: {last_timestamp}")
     if response is not None:
         print(f"Status Code: {response.status_code}")
@@ -243,8 +260,8 @@ def place_futures_order() -> dict:
         except Exception:
             return {"raw": response.text}
     if last_exc:
-        raise last_exc
-    return {"error": "No response"}
+        return {"error": str(last_exc)}
+    return {"error": "No valid signature format"}
 
 # Тестируем функцию
 if __name__ == "__main__":
