@@ -1,4 +1,4 @@
-# Last modified (MSK): 2025-09-07 15:51:24 MSK — правка номер 11
+# Last modified (MSK): 2025-09-07 16:03:20 MSK — правка номер 12
 import requests
 import time
 import hmac
@@ -16,7 +16,7 @@ api_key = os.getenv('api_key1', '1')
 api_secret = os.getenv('api_secret1', '1')
 
 # Переключаемые режимы подписи и заголовков
-SIGN_MODE = 'METHOD_PATH_TS_BODY'  # METHOD_PATH_TS_BODY | TS_PATH_BODY | TS_BODY
+SIGN_MODE = 'TS_BODY'  # METHOD_PATH_TS_BODY | TS_PATH_BODY | TS_BODY
 ALT_HEADER = '0'  # если '1', добавлять X-BX-API-KEY
 
 BASE_URL = 'https://open-api.bingx.com'
