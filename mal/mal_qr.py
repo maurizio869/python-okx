@@ -1,4 +1,4 @@
-# Last modified (MSK): 2025-09-07 16:31:38 MSK — правка номер 13
+# Last modified (MSK): 2025-09-07 16:35:22 MSK — правка номер 14
 import requests
 import time
 import hmac
@@ -20,7 +20,7 @@ api_secret = os.getenv('api_secret1', '1')
 SIGN_MODE = 'TS_BODY'  # METHOD_PATH_TS_BODY | TS_PATH_BODY | TS_BODY
 ALT_HEADER = '0'
 BASE_URL = 'https://open-api.bingx.com'
-TIMEOUT = int(os.getenv('TIMEOUT','20'))
+TIMEOUT = 8
 
 _time_skew_ms = 0
 
