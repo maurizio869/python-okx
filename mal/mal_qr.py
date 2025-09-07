@@ -1,4 +1,4 @@
-# Last modified (MSK): 2025-09-07 16:50:14 MSK — правка номер 16
+# Last modified (MSK): 2025-09-07 16:56:16 MSK — правка номер 17
 import requests
 import time
 import hmac
@@ -186,7 +186,7 @@ def place_futures_order() -> dict:
         "symbol": "HBAR-USDT",
         "side": "SELL",
         "type": "MARKET",
-        "quantity": "3",
+        "quantity": "8",
         "positionSide": "SHORT"
     }
     _sync_server_time()
@@ -277,7 +277,6 @@ def place_futures_order() -> dict:
             data = r.json()
         except Exception:
             data = None
-        code = data.get('code') if isinstance(data, dict) else None
         print(f"Timestamp: {ts}")
         print(f"Status Code: {r.status_code}")
         print(f"Response: {r.text}")
