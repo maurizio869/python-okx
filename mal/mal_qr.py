@@ -1,4 +1,4 @@
-# Last modified (MSK): 2025-09-07 15:14:44 MSK — правка номер 10
+# Last modified (MSK): 2025-09-07 15:51:24 MSK — правка номер 11
 import requests
 import time
 import hmac
@@ -16,10 +16,12 @@ api_key = os.getenv('api_key1', '1')
 api_secret = os.getenv('api_secret1', '1')
 
 # Переключаемые режимы подписи и заголовков
-SIGN_MODE = os.getenv('BINGX_SIGN_MODE', 'METHOD_PATH_TS_BODY')  # METHOD_PATH_TS_BODY | TS_PATH_BODY | TS_BODY
-ALT_HEADER = os.getenv('BINGX_ALT_HEADER', '0')  # если '1', добавлять X-BX-API-KEY
+SIGN_MODE = 'METHOD_PATH_TS_BODY'  # METHOD_PATH_TS_BODY | TS_PATH_BODY | TS_BODY
+ALT_HEADER = '0'  # если '1', добавлять X-BX-API-KEY
 
-BASE_URL = os.getenv('BINGX_API_BASE', 'https://open-api.bingx.com')
+BASE_URL = 'https://open-api.bingx.com'
+
+TIMEOUT = int(os.getenv('TIMEOUT','20'))
 
 _time_skew_ms = 0
 
@@ -80,7 +82,7 @@ def _signed_post(path, body: dict, timeout_sec: int = 20, retries: int = 2):
         print(f"DBG POST path={path} ts={ts} sign_mode={SIGN_MODE} alt_header={ALT_HEADER} attempt={attempt}")
         print(f"DBG POST string_signed={( 'POST'+path+ts+jb) if SIGN_MODE=='METHOD_PATH_TS_BODY' else (ts+path+jb) if SIGN_MODE=='TS_PATH_BODY' else (ts+jb)}")
         try:
-            return requests.post(f"{BASE_URL}{path}", data=jb, headers=hdr, timeout=timeout_sec)
+            return requests.post(f"{BASE_URL}{path}", data=jb, headers=hdr, timeout=TIMEOUT)
         except requests.exceptions.RequestException as e:
             last_exc = e
             time.sleep(0.5 * (attempt + 1))
@@ -103,7 +105,7 @@ def _signed_get(path: str, timeout_sec: int = 20, retries: int = 2):
         print(f"DBG GET path={path} ts={ts} sign_mode={SIGN_MODE} alt_header={ALT_HEADER} attempt={attempt}")
         print(f"DBG GET string_signed={( 'GET'+path+ts+jb) if SIGN_MODE=='METHOD_PATH_TS_BODY' else (ts+path+jb) if SIGN_MODE=='TS_PATH_BODY' else (ts+jb)}")
         try:
-            return requests.get(f"{BASE_URL}{path}", headers=hdr, timeout=timeout_sec)
+            return requests.get(f"{BASE_URL}{path}", headers=hdr, timeout=TIMEOUT)
         except requests.exceptions.RequestException as e:
             last_exc = e
             time.sleep(0.5 * (attempt + 1))
