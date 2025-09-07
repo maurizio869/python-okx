@@ -1,4 +1,4 @@
-# Last modified (MSK): 2025-09-07 17:01:59 MSK — правка номер 18
+# Last modified (MSK): 2025-09-07 17:29:20 MSK — правка номер 19
 import requests
 import time
 import hmac
@@ -19,6 +19,9 @@ api_secret = os.getenv('api_secret1', '1')
 # Константы
 BASE_URL = 'https://open-api.bingx.com'
 TIMEOUT = 8  # секунды
+# Регулируемые параметры ордера
+ORDER_QUANTITY = '8'  # минимально допустимо 8 для HBAR
+ORDER_LEVERAGE = 10   # плечо 10x
 
 # ------------------------- Вспомогательные функции -------------------------
 
@@ -96,7 +99,7 @@ def place_futures_order() -> dict:
         'symbol': 'HBAR-USDT',
         'side': 'SELL',
         'type': 'MARKET',
-        'quantity': '8',
+        'quantity': ORDER_QUANTITY,
         'positionSide': 'SHORT'
     }
 
@@ -134,8 +137,8 @@ def place_futures_order() -> dict:
 # ------------------------------- Тест-запуск --------------------------------
 if __name__ == '__main__':
     print('Запуск теста API...')
-    # Плечо 10x (опционально; у нас это работало)
-    set_leverage('HBAR-USDT', 10)
+    # Плечо (опционально)
+    set_leverage('HBAR-USDT', ORDER_LEVERAGE)
     # Размещаем ордер
     result = place_futures_order()
     print(f"Результат: {result}")
